@@ -3,13 +3,14 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O3
 CC=gcc
-#OFLAGS=--usual-suspects
-OFLAGS=--native
+OFLAGS=--usual-suspects
+#OFLAGS=--native
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
 you: deps bin/radamsa .seal-of-quality
 
 bin/radamsa: radamsa.c
+	-mkdir bin
 	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
 
 bin/radamsa.exe: radamsa.c
@@ -37,6 +38,7 @@ clean:
 	-rm radamsa.c bin/* .seal-of-quality
 
 .seal-of-quality: bin/radamsa
+	-mkdir tmp
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
 
