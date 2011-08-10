@@ -3,8 +3,8 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O3
 CC=gcc
-OFLAGS=--usual-suspects
-#OFLAGS=--native
+#OFLAGS=--usual-suspects
+OFLAGS=--native
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
 you: deps bin/radamsa .seal-of-quality
