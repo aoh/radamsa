@@ -23,6 +23,7 @@
 ; DEALINGS IN THE SOFTWARE.
 ;
 
+;; todo: randomize stream fuzzer selection (needed especially when generating less files than there are stream fuzzers)
 ;; todo: randomize block sizes
 ;; todo: add different mutators (1, at most n, reducing, ...)
 ;; todo: add info about used streams and fuzzers to to %i
@@ -42,8 +43,6 @@
 (define version-str "Radamsa v0.2b")
 
 (define *block-size* (* 1024 4)) ;; input block size, usually also the block size being written at each step
-
-
 
 ;;
 ;;; Dependencies
@@ -71,6 +70,10 @@
       (fold (λ (seed digit) (* (+ digit 1) (+ seed 1))) 1 (str-iter str))
       (error "bad seed: " str)))
 
+(define (fatal-error reason info exit-val)
+   (show reason info)
+   (exit-owl exit-val))
+
 ;; fixme: add a custom bvec-ranges
 ;; bvec-range      start end → bvec' | False
 ;; bvec-range-list start end → (byte ..) | False
@@ -89,6 +92,10 @@
 ;;;
 ;;; Stream generators
 ;;;
+
+;; stream generators are things that create a lazy stream of data consisting of 
+;; blocks of raw data. these are then possibly edited by the stream fuzzers and 
+;; muxers to produce the final data.
 
 ; thread-init → #(streamer|muxer|fuzzer Node)
 ; streamer → Node = #(n-written/priority 1/priority Opts ((block ...) ...))
@@ -167,7 +174,6 @@
                      (list->byte-vector (repeat base (- len (* blocks *block-size*)))))
                   (loop rs)))))))
 
-
 (define (sgen-rrep s r o)
    (tuple 'streamer
       (tuple 0 50
@@ -178,17 +184,10 @@
                 (rs letters (random-numbers rs 256 nalpha)) ;; alphabet (may have repetition)
                 (alpha (list->vector letters)) ;; index 0-(nalpha-1)
                 (rs len (rnd-log rs 10)) ;; block size to repeat
-                ;(rs len (rnd-log rs 10)) ;; block size to repeat
                 (rs poss (random-numbers rs nalpha len))
                 (bytes (map (λ (p) (vec-ref alpha p)) poss))
-                (_ (show " -> " bytes))
-                (_ (show "   + sum " (fold + 2 bytes)))
-                (_ (show "   + len " (length bytes)))
-                (block (list->vector bytes))
-                (_ (show "   + block " block))
-                (len 1)
-                (rs n (rnd rs 1024))) ;; repeat block how many times
-               (show "   + repeat " n)
+                (block (list->byte-vector bytes))
+                (rs n (rnd-log rs 6))) ;; repeat block how many times
                ;; ok to make in memory, because this is just ~3n+len/W words
                (pair (map (λ (p) block) (iota 0 1 n)) (loop rs)))))))
 
@@ -465,6 +464,7 @@
                      (edit-byte-vector (car str) p (λ (old tl) (cons 42 tl)))
                      (cdr str))))))))
 
+;; todo: add zero width joiners, different length leading blank padding bytes etc
 (define funny-unicode
    (tuple
       (list #xef #xbb #xbf)  ;; the canonical utf8 bom
@@ -609,12 +609,12 @@
       False
       (list
          ;; stream generator startup
-         ;sgen-sample      ;; read sample files and stream them out as such with varying block sizes (requires fuzzing)
+         sgen-sample      ;; read sample files and stream them out as such with varying block sizes (requires fuzzing)
          sgen-rrep
-         ;sgen-flat
-         ;sgen-enumerate
-         ;sgen-step
-         ;sgen-random
+         sgen-flat
+         sgen-enumerate
+         sgen-step
+         sgen-random
          
          ;; fuzzer module startup
          ;sfuzz-star      ;; adds the *-character somewhere (for testing distributions)
@@ -770,6 +770,8 @@
          (let ((path (mkpath nth info signal)))
             (if path
                (let ((port (open-output-file path)))
+                  (if (not port) ;; exit run
+                     (fatal-error "Cannot write to " path 1))
                   (for-each display (list " - " path ": "))
                   (let ((n-written (send-stream signal port)))
                      (if n-written
