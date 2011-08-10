@@ -40,7 +40,7 @@
 ;;; Static parameters
 ;;;
 
-(define version-str "Radamsa v0.2b")
+(define version-str "Radamsa v0.2c")
 
 (define *block-size* (* 1024 4)) ;; input block size, usually also the block size being written at each step
 
