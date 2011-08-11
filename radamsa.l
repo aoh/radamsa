@@ -444,14 +444,91 @@
             (else
                (error "fuzzers got funny op " opt))))))
               
-;; todo: sfuzz-num
-;; todo: sfuzz-str
-
-
 
 ;;;
 ;;; Stream fuzzers
 ;;;
+
+(define (digit d)
+   (cond
+      ((lesser? d 48) F)
+      ((lesser? 57 d) F)
+      (else (- d 48))))
+
+; → digit|F tail
+(define (get-num lst)
+   (let loop ((lst lst) (n 0) (digits 0))
+      (cond
+         ((null? lst)
+            (if (eq? digits 0) 
+               (values F null)
+               (values n null)))
+         ((digit (car lst)) =>
+            (λ (d) (loop (cdr lst) (+ d (* n 10)) (+ digits 1))))
+         ((eq? digits 0)
+            (values F lst))
+         (else
+            (values n lst)))))
+
+;; copy from pos up to end (not countin it)
+(define (copy-range pos end tail)
+   (if (eq? pos end)
+      tail
+      (cons (car pos) (copy-range (cdr pos) end tail))))
+
+;; fixme: simple placeholder
+(define (mutate-num rs num)
+   (lets ((rs n (rnd rs 10)))
+      (cond
+         ((eq? n 0) (values rs (+ n 1)))
+         ((eq? n 1) (values rs (- n 1)))
+         ((eq? n 2) (values rs 0))
+         ((eq? n 3) (values rs 1))
+         ((eq? n 4) (values rs #xff))
+         ((eq? n 5) (values rs #x100))
+         ((eq? n 6) (values rs #xffff))
+         ((eq? n 7) (values rs #x10000))
+         ((eq? n 8) (values rs #xffffffff))
+         ((eq? n 9) (values rs #x100000000))
+         (else
+            (lets 
+               ((rs n (rnd rs 129))
+                (rs n (rnd-log rs n)))
+               (values rs (+ num n)))))))
+
+(define (mutate-a-num rs lst nfound)
+   (if (null? lst)
+      (lets ((rs which (rnd rs nfound)))
+         ;; choose which to mutate (or 0 if none)
+         (values rs which null))
+      (lets ((valp lstp (get-num lst)))
+         (if valp
+            (lets ((rs which tail (mutate-a-num rs lstp (+ nfound 1))))
+               (if (eq? which 0) ;; i won, insert 42
+                  (lets ((rs new (mutate-num rs valp)))
+                     (values rs -1 (render render new tail)))
+                  (values rs (- which 1)
+                     (copy-range lst lstp tail))))
+            (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
+               (values rs which (cons (car lst) tail)))))))
+
+'(lets 
+   ((rs pos lst 
+      (mutate-a-num (seed->rands (expt (time-ms) 3)) 
+         (string->list " 11 22")
+         0)))
+   (print (list->string lst)))
+
+(define (sfuzz-num s r o)
+   (tuple 'fuzzer
+      (cons 1
+         (λ (rs str)
+            (lets
+               ((lst (vec->list (car str)))
+                (rs n lst (mutate-a-num rs lst 0)))
+               (values rs
+                  ;; fixme: need a (bvec-conss bytes bvec) that splits large lists
+                  (cons (list->byte-vector lst) (cdr str))))))))
 
 ;; put a star to some position
 (define (sfuzz-star s r o)
@@ -625,6 +702,7 @@
          sfuzz-stutter    ;; stutter a part of the block
          sfuzz-rjump      ;; jump to a random position within a block (will probably be dropped after sfuzz-jump is in place)
          sfuzz-unifun     ;; fun with unicode
+         sfuzz-num        ;; modify numbers (if any)
          )))
 
 
