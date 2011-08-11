@@ -543,25 +543,65 @@
 
 ;; todo: add zero width joiners, different length leading blank padding bytes etc
 (define funny-unicode
-   (tuple
-      (list #xef #xbb #xbf)  ;; the canonical utf8 bom
-      (list #xfe #xff)       ;; utf16 be bom
-      (list #xff #xfe)       ;; utf16 le bom
-      (list 0 0 #xff #xff)   ;; ascii null be
-      (list #xff #xff 0 0)   ;; ascii null le
-      (list 43 47 118 56)    ;; and some others from wikipedia
-      (list 43 47 118 57)
-      (list 43 47 118 43)
-      (list 43 47 118 47)
-      (list 247 100 76)
-      (list 221 115 102 115)
-      (list 14 254 255)
-      (list 251 238 40)
-      (list 251 238 40 255)
-      (list 132 49 149 51)))
+   (list->tuple
+      (append
+         (list ;; some manual ones
+            (list #xef #xbb #xbf)  ;; the canonical utf8 bom
+            (list #xfe #xff)       ;; utf16 be bom
+            (list #xff #xfe)       ;; utf16 le bom
+            (list 0 0 #xff #xff)   ;; ascii null be
+            (list #xff #xff 0 0)   ;; ascii null le
+            (list 43 47 118 56)    ;; and some others from wikipedia
+            (list 43 47 118 57)
+            (list 43 47 118 43)
+            (list 43 47 118 47)
+            (list 247 100 76)
+            (list 221 115 102 115)
+            (list 14 254 255)
+            (list 251 238 40)
+            (list 251 238 40 255)
+            (list 132 49 149 51))
+         (map ;; some valid points and ranges
+            (λ (codepoint) 
+               (render render codepoint null)) ;; <- make UTF-8 repr
+            (fold
+               (λ (tl node)
+                  (if (pair? node) ;; inclusive range
+                     (append (iota (car node) 1 (+ (cdr node) 1)) tl)
+                     (cons node tl)))
+               null
+               '((#x0009 . #x000d)    ; control chars
+                 #x00a0               ; no-break space
+                 #x1680               ; ogham space mark
+                 #x180e               ; mongolian vowel separater (...)
+                 (#x2000 . #x200a)    ; some spaces
+                 #x2028               ; line separator
+                 #x2029               ; paragraph separator
+                 #x202f               ; narrow no-break space
+                 #x205f               ; medium mathematical space (for small vectors)
+                 #x3000               ; ideographic space
+                 (#x200e . #x200f)    ; bidi stuff
+                 (#x202a . #x202e)    ; more bidi stuff
+                 (#x200c . #x200d)    ; zero width joining
+                 #x0345               ; combining greek yggdrasil
+                 #x00b7               ; extender - middle dot
+                 (#x02d0 . #x02d1)     ; modifiers
+                 #xff70               ; prolonged sound 
+                 (#x02b0 . #x02b8)    ; modifier small letters
+                 #xfdd0               ; a non-character 
+                 #x034f               ; ignorables
+                 (#x115f . #x1160)    ; hangul ignorables
+                 (#x2065 . #x2069)    ; reserved ignorables
+                 #x3164               ; hangul filler
+                 #xffa0               ; halfwit hangul filler
+                 #xe0001              ; deprecated language tag
+                 (#xe0020 . #xe007f)  ; more deprecated 
+                 (#x0e40 . #x0e44)    ; something else
+                 #x1f4a9              ; some unicode shit
+      ))))))
 
-
-(define (sfuzz-unifun s r o)
+;; insert UTF-8 that might be mishandled
+(define (sfuzz-unicode s r o)
    (tuple 'fuzzer
       (cons 1
          (λ (rs str)
@@ -685,7 +725,7 @@
          (put out op (catch-thread op)))
       False
       (list
-         ;; stream generator startup
+         ;; stream generators
          sgen-sample      ;; read sample files and stream them out as such with varying block sizes (requires fuzzing)
          sgen-rrep
          sgen-flat
@@ -693,7 +733,7 @@
          sgen-step
          sgen-random
          
-         ;; fuzzer module startup
+         ;; stream fuzzers
          ;sfuzz-star      ;; adds the *-character somewhere (for testing distributions)
          sfuzz-bit        ;; flips a random bit
          sfuzz-drop       ;; drop a single byte
@@ -701,7 +741,7 @@
          sfuzz-add-carry  ;; add 1-255 with carry to the right
          sfuzz-stutter    ;; stutter a part of the block
          sfuzz-rjump      ;; jump to a random position within a block (will probably be dropped after sfuzz-jump is in place)
-         sfuzz-unifun     ;; fun with unicode
+         sfuzz-unicode    ;; fun with unicode
          sfuzz-num        ;; modify numbers (if any)
          )))
 
