@@ -215,7 +215,6 @@
    (fold
       (λ (out op)
          ;; for a thread to handle initialization and store the thread id (which is the op)
-         (show " - forking " op)
          (fork-linked-server op (λ () (op samples rst opts)))
          (wait 1)
          (put out op (catch-thread op)))
