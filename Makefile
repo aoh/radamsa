@@ -17,7 +17,7 @@ bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
-radamsa.c: radamsa.l
+radamsa.c: *.l
 	ol $(OFLAGS) -o radamsa.c radamsa.l
 
 install: bin/radamsa
@@ -46,7 +46,7 @@ todo:
 	ol -n *.l
 
 deps:
-	which ol || { echo "you need owl from https://github.com/aoh/owl-lisp"; false; }
+	which ol || { echo "you need to git clone http://haltp.org/git/owl-lisp.git && cd owl-lisp && make && sudo make install"; false; }
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
 
 uninstall:
