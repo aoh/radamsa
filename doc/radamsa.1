@@ -1,0 +1,29 @@
+.TH radamsa 1 "June 27, 2011"
+.SH NAME
+radamsa \- a general purpose fuzzer
+.SH SYNOPSIS
+.B radamsa
+.RI [ options ] " -o output-pattern " [ sample-path ] " ..."
+.SH DESCRIPTION
+.B Radamsa 
+is a data fuzzer. It performs more and less in-depth analysis on the given
+.B sample-paths
+and uses the results to write more and less similar data. The
+.B output-pattern
+specifies where the data should be written.
+.SH OPTIONS
+This program follows the usual GNU command line syntax, with long
+options starting with two dashes (`-').
+A summary of options is included below.
+.TP
+.B \-h, \-\-help
+Show summary of options.
+.TP
+.B \-v, \-\-version
+Show version of program.
+.SH EXAMPLES
+Typical usage examples here.
+.SH SEE ALSO
+.BR fuzz (1), fusil (1), zzuf (1), 
+.SH AUTHOR
+Radamsa and this manual page were written by Aki Helin <aki.helin@iki.fi>.
