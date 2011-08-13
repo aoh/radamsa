@@ -598,13 +598,14 @@ More information is available at:
       (else
          (lets 
             ((seed (string->seed (get opts 'seed F)))
+             (paths (if (null? paths) '("-") paths)) ;; read sample data from stdin if no samples given
 				 (rs (seed->rands seed))
 				 (rs paths (random-permutation rs paths))
              (paths (maybe-subset paths opts))
              (rsa rsb rsc (make-rand-streams rs))
              (init (start-fuzzer-modules paths rsa opts))
              (os (start-outputs opts paths))
-             (ss ms fs init ;; allow some exra initialization time
+             (ss ms fs init ;; allow some extra initialization time
                (step-threads null null (make-fuzzer-store rsb) init 1000))
              (rval (radamsa ss ms fs init 1 os)))
             (if (eq? rval 'ok)
