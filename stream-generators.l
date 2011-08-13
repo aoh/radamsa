@@ -7,6 +7,10 @@
    ;;; Stream generators
    ;;;
 
+   ;; sample stream parameters
+   (define max-block-size 512)
+   (define min-block-size 4)
+
    ;; stream generators are things that create a lazy stream of data consisting of 
    ;; blocks of raw data. these are then possibly edited by the stream fuzzers and 
    ;; muxers to produce the final data.
@@ -60,6 +64,9 @@
             (loop (- n 1) (cons thing out)))))
 
    (define (repeat-blocks pre n tail)
+      (print (list 'repeat-blocks n))
+      (show " pre " (sizeb pre))
+      (show " tail " (sizeb tail))
       (if (= n 0)
          (list tail)
          (pair pre (repeat-blocks pre (- n 1) tail))))
@@ -81,9 +88,12 @@
                   ((rs base (rnd rs 256))
                    (rs len (rnd-length rs))
                    (blocks (div len *block-size*)))
+                  (print (list 'loop 'base base 'len len 'blocks blocks))
                   (pair
                      (repeat-blocks 
-                        (list->byte-vector (repeat base *block-size*))
+                        (if (> blocks 0)
+                           (list->byte-vector (repeat base *block-size*))
+                           'nothing)
                         blocks
                         (list->byte-vector (repeat base (- len (* blocks *block-size*)))))
                      (loop rs)))))))
@@ -191,33 +201,41 @@
 
    ;;; stream samples as such, requires fuzzing
 
-   ;; a silly io issue, ports read n+1 bytes to be able to read the full 65536 with max fixnum arguemnt 65535
-   (define sp (- *block-size* 1))
-
    ;; bvec|F bvec → bvec
    (define (merge head tail)
       (if head
          (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
          tail))
 
+   (define limit (+ max-block-size 1))
+
+   (define (rnd-block-size rs)
+      (lets
+         ((rs n (rnd rs limit))
+          (n (max n 4)))
+         (values rs n)))
+
    ;; stream data from port as *block-size* sized blocks and close it at eof
-   (define (stream-blocks port)
-      (let loop ((last F) (wanted sp))
-         (let ((block (interact port wanted)))
-            (cond
-               ((eof? block) ;; end of stream
-                  (if (not (eq? port stdin)) (close-port port))
-                  (if last (list last) null))
-               ((not block) ;; read error
-                  ;; later carp via whatever logging system is used to stderr
-                  (if (not (eq? port stdin)) (close-port port))
-                  (if last (list last) null))
-               ((eq? (sizeb block) (+ wanted 1))
-                  ;; last and this have *block-size* bytes
-                  (let ((block (merge last block)))
-                     (pair block (loop F sp))))
-               (else
-                  (loop (merge last block) (- wanted (sizeb block))))))))
+   (define (stream-blocks rs port)
+      (lets ((rs first (rnd-block-size rs)))
+         (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
+            (let ((block (interact port wanted)))
+               (cond
+                  ((eof? block) ;; end of stream
+                     (if (not (eq? port stdin)) (close-port port))
+                     (if last (list last) null))
+                  ((not block) ;; read error
+                     ;; later carp via whatever logging system is used to stderr
+                     (if (not (eq? port stdin)) (close-port port))
+                     (if last (list last) null))
+                  ((eq? (sizeb block) (+ wanted 1))
+                     ;; a block of required (deterministic) size is ready
+                     (lets
+                        ((block (merge last block))
+                         (rs next (rnd-block-size rs)))
+                        (pair block (loop rs F next))))
+                  (else
+                     (loop rs (merge last block) (- wanted (sizeb block)))))))))
 
    (define (open-sample-port path)
       (cond
@@ -225,17 +243,20 @@
          (else (open-input-file path))))
 
    ;; todo: make the first block a special case?
-   (define (stream-sample path)
+   (define (stream-sample rs path)
       (let ((port (open-sample-port path)))
          (if port
-            (stream-blocks port) ; <- use also for stdin streaming
+            (stream-blocks rs port) ; <- use also for stdin streaming
             null))) ; <- report to stderr later
 
-   (define (sample-stream paths)
-      (let loop ((ps paths))
+   (define (sample-stream rs paths)
+      (let loop ((rs rs) (ps paths))
          (if (null? ps)
-            (loop paths)
-            (pair (stream-sample (car ps)) (loop (cdr ps))))))
+            (loop rs paths)
+            (lets ((rs seed (rnd rs #x100000000)))
+               (pair 
+                  (stream-sample (seed->rands seed) (car ps))
+                  (loop rs (cdr ps)))))))
 
    (define (sgen-sample s r o)
       (if (null? s)
@@ -243,13 +264,14 @@
          (tuple 'streamer
             (tuple 0 1 
                (list->ff '((fuzz . yes) (name . "sample")))
-               (sample-stream s)))))
+               (sample-stream r s)))))
 
    (define stream-generators
       (list
          sgen-sample      ;; read sample files and stream them out as such with varying block sizes (requires fuzzing)
          sgen-rrep
-         sgen-flat
+         ;sgen-flat
          sgen-enumerate
          sgen-step
-         sgen-random)))
+         sgen-random
+         )))

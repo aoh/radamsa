@@ -64,7 +64,7 @@
 
    ;; fixme: simple placeholder
    (define (mutate-num rs num)
-      (lets ((rs n (rnd rs 10)))
+      (lets ((rs n (rnd rs 16)))
          (cond
             ((eq? n 0) (values rs (+ n 1)))
             ((eq? n 1) (values rs (- n 1)))
@@ -78,7 +78,7 @@
             ((eq? n 9) (values rs #x100000000))
             (else
                (lets 
-                  ((rs n (rnd rs 129))
+                  ((rs n (rnd-range rs 1 129))
                    (rs n (rnd-log rs n)))
                   (values rs (+ num n)))))))
 
@@ -90,8 +90,10 @@
          (lets ((valp lstp (get-num lst)))
             (if valp
                (lets ((rs which tail (mutate-a-num rs lstp (+ nfound 1))))
-                  (if (eq? which 0) ;; i won, insert 42
-                     (lets ((rs new (mutate-num rs valp)))
+                  (if (eq? which 0) ;; i won
+                     (lets 
+                        ((rs new (mutate-num rs valp))
+                         (new-lst (render render new tail)))
                         (values rs -1 (render render new tail)))
                      (values rs (- which 1)
                         (copy-range lst lstp tail))))

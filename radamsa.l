@@ -140,7 +140,7 @@
 ;; start apply the fuzzer functoin to stream at random places lazily
 (define (attach-fuzzer rs str f)
    (lets ;; reseed the fuzzer using the old one
-      ((rs seed (rnd rs 10000000000000))
+      ((rs seed (rnd rs #xffffffffffffffff))
        (rs (seed->rands seed))
        (rs iprob (rnd rs 10))) ;; <- use rnd 10 and rnd-nbit here (should be independent of stream length, which is not always known)
       (stream-walker rs str f iprob F)))
@@ -200,6 +200,8 @@
                         (attach-n-fuzzers fs rs data nfuzzers)))))
             (else
                (error "fuzzers got funny op " opt))))))
+
+
 
 ;;; Load stream fuzzers
 
@@ -523,8 +525,8 @@ More information is available at:
      (seed "-s" "--seed" has-arg comment "random seed")
      (about "-A" "--about")
      (version "-V" "--version")
-     (continuous "-c" "--continuous" has-arg 
-      comment "enable continuous generation (see man page for details)")
+     ;(continuous "-c" "--continuous" has-arg 
+     ; comment "enable continuous generation (see man page for details)")
      (subset "-S" "--subset" cook ,string->natural 
          comment "take a random subset of n samples")
      (verbose "-v" "--verbose")))
