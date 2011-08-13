@@ -8,7 +8,7 @@
    ;;;
 
    ;; sample stream parameters
-   (define max-block-size 512)
+   (define max-block-size 8192)
    (define min-block-size 4)
 
    ;; stream generators are things that create a lazy stream of data consisting of 
