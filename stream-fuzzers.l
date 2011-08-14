@@ -64,7 +64,7 @@
 
    ;; fixme: simple placeholder
    (define (mutate-num rs num)
-      (lets ((rs n (rnd rs 16)))
+      (lets ((rs n (rand rs 16)))
          (cond
             ((eq? n 0) (values rs (+ n 1)))
             ((eq? n 1) (values rs (- n 1)))
@@ -78,13 +78,13 @@
             ((eq? n 9) (values rs #x100000000))
             (else
                (lets 
-                  ((rs n (rnd-range rs 1 129))
-                   (rs n (rnd-log rs n)))
+                  ((rs n (rand-range rs 1 129))
+                   (rs n (rand-log rs n)))
                   (values rs (+ num n)))))))
 
    (define (mutate-a-num rs lst nfound)
       (if (null? lst)
-         (lets ((rs which (rnd rs nfound)))
+         (lets ((rs which (rand rs nfound)))
             ;; choose which to mutate (or 0 if none)
             (values rs which null))
          (lets ((valp lstp (get-num lst)))
@@ -116,7 +116,7 @@
       (tuple 'fuzzer 
          (cons 1 
             (λ (rs str) 
-               (lets ((rs p (rnd rs (sizeb (car str)))))
+               (lets ((rs p (rand rs (sizeb (car str)))))
                   (values rs
                      (cons 
                         (edit-byte-vector (car str) p (λ (old tl) (cons 42 tl)))
@@ -187,8 +187,8 @@
          (cons 1
             (λ (rs str)
                (lets 
-                  ((rs p (rnd rs (sizeb (car str))))
-                   (rs bytes (rnd-elem rs funny-unicode)))
+                  ((rs p (rand rs (sizeb (car str))))
+                   (rs bytes (rand-elem rs funny-unicode)))
                   (values rs
                      (cons
                         (edit-byte-vector (car str) p (λ (old tl) (append bytes (cons old tl))))
@@ -199,8 +199,8 @@
          (cons 1 
             (λ (rs str) 
                (lets 
-                  ((rs p (rnd rs (sizeb (car str))))
-                   (rs b (rnd rs 8)))
+                  ((rs p (rand rs (sizeb (car str))))
+                   (rs b (rand rs 8)))
                   (values rs
                      (cons 
                         (edit-byte-vector (car str) p 
@@ -212,8 +212,8 @@
          (cons 1 
             (λ (rs str) 
                (lets 
-                  ((rs p (rnd rs (sizeb (car str))))
-                   (rs b (rnd rs 8)))
+                  ((rs p (rand rs (sizeb (car str))))
+                   (rs b (rand rs 8)))
                   (values rs
                      (cons 
                         (edit-byte-vector (car str) p (λ (old tl) tl))
@@ -223,7 +223,7 @@
       (tuple 'fuzzer 
          (cons 1 
             (λ (rs str) 
-               (lets ((rs p (rnd rs (sizeb (car str)))))
+               (lets ((rs p (rand rs (sizeb (car str)))))
                   (values rs
                      (cons 
                         (edit-byte-vector (car str) p 
@@ -237,12 +237,12 @@
                (if (< (sizeb (car str)) 4)
                   (values rs str)
                   (lets 
-                     ((rs start (rnd-range rs 0 (- (sizeb (car str)) 2)))
-                      (rs end (rnd-range rs (+ start 1) (sizeb (car str))))
+                     ((rs start (rand-range rs 0 (- (sizeb (car str)) 2)))
+                      (rs end (rand-range rs (+ start 1) (sizeb (car str))))
                       (pre (map (λ (p) (refb (car str) p)) (iota 0 1 start)))
                       (post (map (λ (p) (refb (car str) p)) (iota end 1 (sizeb (car str)))))
                       (stut (list->byte-vector (map (λ (p) (refb (car str) p)) (iota start 1 end))))
-                      (rs n (rnd-log rs 10)) ; max 2^10 = 1024 stuts
+                      (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
                       (stuts 
                         (fold 
                            (λ (tl n) (cons stut tl))
@@ -269,8 +269,8 @@
          (cons 1 
             (λ (rs str) 
                (lets 
-                  ((rs p (rnd rs (sizeb (car str))))
-                   (rs delta (rnd rs 256)))
+                  ((rs p (rand rs (sizeb (car str))))
+                   (rs delta (rand rs 256)))
                   (values rs
                      (cons 
                         (edit-byte-vector (car str) p 
@@ -289,8 +289,8 @@
             (λ (rs str)
                (lets ; → 0..a b..end 
                   ((block (car str))
-                   (rs a (rnd rs (sizeb block)))
-                   (rs b (rnd rs (sizeb block)))
+                   (rs a (rand rs (sizeb block)))
+                   (rs b (rand rs (sizeb block)))
                    (as (map (λ (p) (refb block p)) (iota 0 1 a)))
                    (bs (map (λ (p) (refb block p)) (iota b 1 (sizeb block)))))
                   (values rs

@@ -71,12 +71,12 @@
          (list tail)
          (pair pre (repeat-blocks pre (- n 1) tail))))
 
-   (define (rnd-length rs)
+   (define (rand-length rs)
       (lets 
          (
-          ; (rs nbits (rnd rs 20)) ;; max 1MB files
-          (rs nbits (rnd rs 15))
-          (rs n (rnd rs (<< 1 (max nbits 6)))))
+          ; (rs nbits (rand rs 20)) ;; max 1MB files
+          (rs nbits (rand rs 15))
+          (rs n (rand rs (<< 1 (max nbits 6)))))
          (values rs n)))
 
    (define (sgen-flat s r o)
@@ -85,8 +85,8 @@
             (list->ff '((name . flat)))
             (let loop ((rs r))
                (lets 
-                  ((rs base (rnd rs 256))
-                   (rs len (rnd-length rs))
+                  ((rs base (rand rs 256))
+                   (rs len (rand-length rs))
                    (blocks (div len *block-size*)))
                   (print (list 'loop 'base base 'len len 'blocks blocks))
                   (pair
@@ -104,14 +104,14 @@
             (list->ff '((name . rrep)))
             (let loop ((rs r))
                (lets
-                  ((rs nalpha (rnd rs 1024)) ;; alphabet size
+                  ((rs nalpha (rand rs 1024)) ;; alphabet size
                    (rs letters (random-numbers rs 256 nalpha)) ;; alphabet (may have repetition)
                    (alpha (list->vector letters)) ;; index 0-(nalpha-1)
-                   (rs len (rnd-log rs 10)) ;; block size to repeat
+                   (rs len (rand-log rs 10)) ;; block size to repeat
                    (rs poss (random-numbers rs nalpha len))
                    (bytes (map (λ (p) (vec-ref alpha p)) poss))
                    (block (list->byte-vector bytes))
-                   (rs n (rnd-log rs 6))) ;; repeat block how many times
+                   (rs n (rand-log rs 6))) ;; repeat block how many times
                   ;; ok to make in memory, because this is just ~3n+len/W words
                   (pair (map (λ (p) block) (iota 0 1 n)) (loop rs)))))))
 
@@ -128,7 +128,7 @@
                null
                (list (list->byte-vector out))))
          (else
-            (lets ((rs b (rnd rs 256)))
+            (lets ((rs b (rand rs 256)))
                (random-stream rs (- len 1) (+ n 1) (cons b out))))))
 
    (define (sgen-random s r o)
@@ -138,8 +138,8 @@
             (list->ff '((name . random)))
             (let loop ((rs r))
                (lets 
-                  ((rs seed (rnd rs 100000000000000000000000))
-                   (rs len (rnd-length rs)))
+                  ((rs seed (rand rs 100000000000000000000000))
+                   (rs len (rand-length rs)))
                   (pair
                      (random-stream (seed->rands seed) len 0 null)
                      (loop rs)))))))
@@ -171,12 +171,12 @@
             (list->ff '((name . step)))
             (let loop ((rs r))
                (lets 
-                  ((rs pos  (rnd rs 256))
-                   (rs del  (rnd rs 256))
-                   (rs del  (rnd rs (+ del 1)))
-                   (rs del  (rnd rs (+ del 1)))
-                   (rs step (rnd rs 256))
-                   (rs len (rnd-length rs)))
+                  ((rs pos  (rand rs 256))
+                   (rs del  (rand rs 256))
+                   (rs del  (rand rs (+ del 1)))
+                   (rs del  (rand rs (+ del 1)))
+                   (rs step (rand rs 256))
+                   (rs len (rand-length rs)))
                   (pair (stepper pos del step len) (loop rs)))))))
 
 
@@ -209,15 +209,15 @@
 
    (define limit (+ max-block-size 1))
 
-   (define (rnd-block-size rs)
+   (define (rand-block-size rs)
       (lets
-         ((rs n (rnd rs limit))
+         ((rs n (rand rs limit))
           (n (max n 4)))
          (values rs n)))
 
    ;; stream data from port as *block-size* sized blocks and close it at eof
    (define (stream-blocks rs port)
-      (lets ((rs first (rnd-block-size rs)))
+      (lets ((rs first (rand-block-size rs)))
          (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
             (let ((block (interact port wanted)))
                (cond
@@ -232,7 +232,7 @@
                      ;; a block of required (deterministic) size is ready
                      (lets
                         ((block (merge last block))
-                         (rs next (rnd-block-size rs)))
+                         (rs next (rand-block-size rs)))
                         (pair block (loop rs F next))))
                   (else
                      (loop rs (merge last block) (- wanted (sizeb block)))))))))
@@ -253,7 +253,7 @@
       (let loop ((rs rs) (ps paths))
          (if (null? ps)
             (loop rs paths)
-            (lets ((rs seed (rnd rs #x100000000)))
+            (lets ((rs seed (rand rs #x100000000)))
                (pair 
                   (stream-sample (seed->rands seed) (car ps))
                   (loop rs (cdr ps)))))))

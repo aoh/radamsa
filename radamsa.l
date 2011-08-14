@@ -116,7 +116,7 @@
       ((pair? ll) 
          (if muta?
             ;; something already mutated -> follow probabilities
-            (lets ((rs n (rnd rs ip))) 
+            (lets ((rs n (rand rs ip))) 
                (if (eq? n 0) ;; mutation occurs with prob 1/ip 
                   (lets ((rs ll (fn rs ll)))
                      (stream-walker rs ll fn (+ ip 1) T)) ;; decrease mutation probability whenever it happens
@@ -140,9 +140,9 @@
 ;; start apply the fuzzer functoin to stream at random places lazily
 (define (attach-fuzzer rs str f)
    (lets ;; reseed the fuzzer using the old one
-      ((rs seed (rnd rs #xffffffffffffffff))
+      ((rs seed (rand rs #xffffffffffffffff))
        (rs (seed->rands seed))
-       (rs iprob (rnd rs 10))) ;; <- use rnd 10 and rnd-nbit here (should be independent of stream length, which is not always known)
+       (rs iprob (rand rs 10))) ;; <- use rnd 10 and rnd-nbit here (should be independent of stream length, which is not always known)
       (stream-walker rs str f iprob F)))
 
 (define (pick-fuzzer l n)
@@ -155,7 +155,7 @@
 
 ;; note, fs may be blank (= (0)) here
 (define (choose-fuzzer rs fs)
-   (lets ((rs n (rnd rs (car fs))))
+   (lets ((rs n (rand rs (car fs))))
       (values rs (pick-fuzzer (cdr fs) n))))
 
 (define (attach-n-fuzzers fs rs data n)
@@ -168,7 +168,7 @@
 
 (define (n-fuzzers rs)
    (let loop ((rs rs) (n 0))
-      (lets ((rs x (rnd rs 2)))
+      (lets ((rs x (rand rs 2)))
          (if (eq? x 0)
             (loop rs (+ n 1))
             (values rs n)))))
@@ -358,9 +358,9 @@
 ;; rs → 3 separate rand streams
 (define (make-rand-streams rs)
    (lets
-      ((rs sa (rnd-nbit rs 128))
-       (rs sb (rnd-nbit rs 128))
-       (rs sc (rnd-nbit rs 128)))
+      ((rs sa (rand-nbit rs 128))
+       (rs sb (rand-nbit rs 128))
+       (rs sc (rand-nbit rs 128)))
       (values (seed->rands sa) (seed->rands sb) (seed->rands sc))))
 
 (define (file-writer mkpath)
