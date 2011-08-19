@@ -6,7 +6,7 @@ fail() {
 }
 
 
-$@ -o :31337 -n 5 > /dev/null & 
+$@ -o :31337 -n 5 radamsa.l > /dev/null & 
 
 sleep 0.5
 

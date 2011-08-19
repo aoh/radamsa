@@ -6,7 +6,7 @@ fail() {
 }
 
 # send 5 somethings 
-$@ -o 127.0.0.1:31338 -n 5 > /dev/null & 
+$@ -o 127.0.0.1:31338 -n 5 radamsa.l > /dev/null & 
 
 for foo in 1 2 3 4 5
 do
