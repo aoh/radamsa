@@ -64,9 +64,6 @@
             (loop (- n 1) (cons thing out)))))
 
    (define (repeat-blocks pre n tail)
-      (print (list 'repeat-blocks n))
-      (show " pre " (sizeb pre))
-      (show " tail " (sizeb tail))
       (if (= n 0)
          (list tail)
          (pair pre (repeat-blocks pre (- n 1) tail))))
@@ -88,7 +85,6 @@
                   ((rs base (rand rs 256))
                    (rs len (rand-length rs))
                    (blocks (div len *block-size*)))
-                  (print (list 'loop 'base base 'len len 'blocks blocks))
                   (pair
                      (repeat-blocks 
                         (if (> blocks 0)
@@ -270,7 +266,7 @@
       (list
          sgen-sample      ;; read sample files and stream them out as such with varying block sizes (requires fuzzing)
          sgen-rrep
-         ;sgen-flat
+         sgen-flat
          sgen-enumerate
          sgen-step
          sgen-random

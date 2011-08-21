@@ -23,8 +23,9 @@
 ; DEALINGS IN THE SOFTWARE.
 ;
 
-;; todo: add different stream function applyers (1, at most n, reducing prob, ...)
+;; todo: ok, i'm extremely tempted to just remove the threading and try to come up with stream fuzzers/muxers that find at least as many bugs as radamsa 0.1.* did.
 ;; todo: randomize stream fuzzer selection (needed especially when generating less files than there are stream fuzzers)
+;; todo: add different stream function applyers (1, at most n, reducing prob, ...)
 ;; todo: add info about used streams and fuzzers to to %i
 ;; todo: have fuzzers adjust their priorities (and whether they run at all) by looking at the generic and their own opts
 ;; todo: have the stream reader merge partial reads in order to be deterministic when given the same data and seed in different sized chunks
@@ -279,7 +280,6 @@
 ;; could be called mutators, but that might be too easy to confuse with muxers
 ;; build a single mutator function, or have them work via a single proxy function?
 (define (choose-fuzzers fs base)
-   (show " - fuzzers are " fs)
    (values fs base))
 
 ;; s m f → s' m' f' data-stream
@@ -346,6 +346,7 @@
 
 ;; todo: really a fold over os
 (define (radamsa ss ms fs init n os)
+   (show "ss are " ss)
    (lets ((writer os (uncons os F)))
       (if writer
          (lets
@@ -529,6 +530,7 @@ More information is available at:
      ; comment "enable continuous generation (see man page for details)")
      (subset "-S" "--subset" cook ,string->natural 
          comment "take a random subset of n samples")
+     (blank "-r" "--tabula-rasa" comment "do not read sample data from stdin if no files given")
      (verbose "-v" "--verbose")))
  
 (define command-line-rules
@@ -598,7 +600,9 @@ More information is available at:
       (else
          (lets 
             ((seed (string->seed (get opts 'seed F)))
-             (paths (if (null? paths) '("-") paths)) ;; read sample data from stdin if no samples given
+             (paths ;; add stdin as a sample if no files given and no blank requested
+               (if (and (null? paths) (not (get opts 'blank F)))
+                  '("-") paths))
 				 (rs (seed->rands seed))
 				 (rs paths (random-permutation rs paths))
              (paths (maybe-subset paths opts))

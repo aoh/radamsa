@@ -308,5 +308,6 @@
             sfuzz-rjump      ;; jump to a random position within a block (will probably be dropped after sfuzz-jump is in place)
             sfuzz-unicode    ;; fun with unicode
             sfuzz-num        ;; modify numbers (if any)
-            )))
+            ))
+)
 
