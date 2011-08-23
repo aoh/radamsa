@@ -2,6 +2,8 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
+;; todo: metadata should be written as the data is generated, because making millions of files at a time will cause metadata to take megabytes → add a (save-meta data) function which will be silent, show names and sizes to stdout, show all to stdout or save to a file (if -[-]m[etadata] is given
+
 ; block-stream      : () | (bvec . block-stream)
 ; stream-fuzzer     : opts → samples → info (block-stream → block-stream)
 ; stream-generator  : opts → samples → info (block-stream ...)
