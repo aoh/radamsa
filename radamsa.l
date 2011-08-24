@@ -123,8 +123,10 @@
      (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
          default "1" comment "How many outputs to generate?")
      (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
-     (enable "-e" "--enable" has-arg default "everything" 
-         comment "Which modules to run? (pass help to list options)")
+     (fuzzers "-f" "--fuzzers" has-arg default "all,sample=50" 
+         comment "Which stream fuzzers to run? (pass help to list options)")
+     (generators "-g" "--generators" has-arg default "all" 
+         comment "Which stream generators to run? (pass help to list options)")
      (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
          comment "Skip start from nth file.")
      (blank "-T" "--tabula-rasa" comment "Do not read any sample data.")))
@@ -200,7 +202,7 @@
             False))))
 
 (define ll-fuzzers   
-   (cons
+   (list
       (cons "foo"
          (λ (rs paths opts)
             (print "Fuzzer foo started")
@@ -209,7 +211,6 @@
          (λ (rs paths opts)
             (print "Fuzzer bar started")
             (λ (ll) (cons (vector 66 65 82) ll))))))
-
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -270,8 +271,9 @@
       ((not (get opts 'seed F))
          ;; make a time-based seed unless one is given explicitly
          (start-radamsa (add-seed opts) paths))
-      ((enable-modules (get opts 'enable F) opts paths) =>
+      ((enable-modules (get opts 'fuzzers F) opts paths) =>
          (λ (enabled) ; <- ((str . priority) ...), strs may be anything
+            ;; add a fail cont and handle all similarly in a let*
             (show "ENABLED: " enabled) 
             (lets
                ((seed (string->seed (get opts 'seed F)))
@@ -281,6 +283,7 @@
                 (rs (seed->rands seed))
                 (offset (get opts 'seek 0))
                 (lls (drop test-lls offset))
+                (fuzs (start rs ll-fuzzers enabled paths opts))
                 (fds (drop (get-stdout-fd 0) offset))
                 (n (get opts 'count F))
                 (lls fds (writer fds lls record-meta/stdout n)))
@@ -307,3 +310,5 @@
                      (show "error: " msg)
                      rval-crashed)))
             (else rval-crashed))))) ;; some other thread is talking to me. equally bad.
+
+
