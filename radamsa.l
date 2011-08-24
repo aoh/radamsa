@@ -146,16 +146,18 @@
 (define command-line-rule-exp
    `((help "-h" "--help")
      (output "-o" "--output" has-arg default "-"
-         comment "Where to save or send the data (default stdout, see man page for options)")
+         comment "Where to write the generated data?")
      (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
-         default "1" comment "how many outputs to generate")
-     (seed "-s" "--seed" has-arg comment "random seed")
-     (blank "-r" "--tabula-rasa" comment "Do not read any sample files or stdin.")))
+         default "1" comment "How many outputs to generate?")
+     (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
+     (enable "-e" "--enable" has-arg default "everything" 
+         comment "Which modules to run? (pass help to list options)")
+     (blank "-r" "--tabula-rasa" comment "Do not read any sample data.")))
 
 (define command-line-rules
    (cl-rules command-line-rule-exp))
 
-(define usage-text "hai ^ - ^")
+(define usage-text "Usage: radamsa [option] [sample-path] ...")
 
 (define (print-usage-text)
    (print usage-text)
@@ -194,31 +196,68 @@
       (fold (λ (seed digit) (* (+ digit 1) (+ seed 1))) 1 (str-iter str))
       (error "bad seed: " str)))
 
+
+;; str → str | (name . priority)
+(define (try-split-priority str)
+   (lets ((parts (c/=/ str)))
+      (cond
+         ((= (length parts) 1)
+            ;; no priority given. default to 1 (lowest).
+            (cons (car parts) 1))
+         ((= (length parts) 2)
+            (let ((pri (string->integer (cadr parts))))
+               (if (and pri (> pri 0))
+                  (cons (car parts) pri)
+                  str)))
+         (else str))))
+
+(define (start-modules pris opts paths)
+   (show "would start modules " pris))
+
+(define (enable-modules selection opts paths)
+   (lets
+      ((mods (keep (λ (x) (> (string-length x) 0)) (c/,/ selection))) ;; split
+       (pris (map try-split-priority mods))
+       (bads (keep string? pris)))
+      (if (null? bads)
+         (start-modules pris opts paths)
+         (begin
+            (for-each (λ (x) (show "Bad module selection: " x)) bads)
+            (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
+            (print "For example -e foo,bar,baz=2 will use baz about as often as foo and bar combined.")
+            (print "Use $ radamsa -e help to list options")
+            False))))
+
 (define (start-radamsa opts paths)
    (cond
       ((get opts 'help F)
-         (print "HALP") 
+         (print-usage-text)
          0)
       ((not (get opts 'seed F))
          ;; make a time-based seed unless one is given explicitly
          (start-radamsa (add-seed opts) paths))
+      ((enable-modules (get opts 'enable F) opts paths) =>
+         (λ (enabled)
+            (show "ENABLED: " enabled)
+            (lets
+               ((seed (string->seed (get opts 'seed F)))
+                (_ (show " -> seed " seed))
+                (paths ;; add stdin as a sample if no files given and no blank requested
+                  (if (and (null? paths) (not (get opts 'blank F)))
+                     '("-") paths))
+                (_ (show " -> samples " paths))
+                (rs (seed->rands seed))
+                (lls fds info-bytes
+                  (writer get-stdout-fd test-lls (get opts 'count False))))
+               (for-each
+                  (λ (node)
+                     (lets ((n-written msg node))
+                        (print* (list " + " (list->string msg) ": " n-written "b"))))
+                  info-bytes)
+               0)))
       (else
-         (lets
-            ((seed (string->seed (get opts 'seed F)))
-             (_ (show " -> seed " seed))
-             (paths ;; add stdin as a sample if no files given and no blank requested
-               (if (and (null? paths) (not (get opts 'blank F)))
-                  '("-") paths))
-             (_ (show " -> samples " paths))
-             (rs (seed->rands seed))
-             (lls fds info-bytes
-               (writer get-stdout-fd test-lls (get opts 'count False))))
-            (for-each
-               (λ (node)
-                  (lets ((n-written msg node))
-                     (print* (list " + " (list->string msg) ": " n-written "b"))))
-               info-bytes)
-            0))))
+         (show "failed to enable modules, and error already printed later: " (get opts 'enable F))
+         1)))
 
 (λ (args)
    (fork-server 'meta toy-meta)
@@ -234,9 +273,3 @@
                      (show "error: " msg)
                      2))) ;; something funny (nothing more specific yet)
             (else 1))))) ;; something unexpected
-
-
-
-
-
-
