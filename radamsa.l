@@ -7,15 +7,6 @@
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
 
-(define (enumr n)
-   (pair 
-      (cons
-         (+ n 100000000)
-         (list (list->byte-vector (cons 42 (render render n '(10))))))
-   (enumr (+ n 1))))
-
-(define gen-test (enumr 1))
-
 ;; test telomerase - add a note
 
 (define (telomerase ll muta) 
@@ -24,30 +15,25 @@
 (define tel-test
    (let loop () (pair (cons "test-telomerase" telomerase) (loop))))
 
-(define test-fuzzs
-   (let loop ()
-      (pair 
-         (cons 'test-fuzzer (λ (a b) a)) (loop))))
-
 (define (car> a b) (> (car a) (car b)))
 
 ;; convert content generators and changers to a stream of data streams
 
-(define (master-telomerase opts)
-   (define (gen gens muxs fuzzs tels)
-      (lets
-         ((g-node gens (uncons gens F))
-          (m-node fuzzs (uncons fuzzs F))
-          (t-node tels (uncons tels F))
-          (case-info 
-            (foldr (λ (x tl) (render render x tl)) null (list (car g-node) "/" (car t-node) "/" (car m-node))))
-          (case-stream
-            (λ ()
-               ((cdr t-node) (cdr g-node) (cdr m-node)))))
-         (pair
-            (cons case-info case-stream)
-            (gen gens muxs fuzzs tels))))
-   gen)
+;; todo: pop a telomerase and use it
+
+(define (master-telomerase gens muxs fuzzs tels)
+   (lets
+      ((g-node gens (uncons gens F))
+       (m-node fuzzs (uncons fuzzs F))
+       (t-node tels (uncons tels F))
+       (case-info 
+         (foldr (λ (x tl) (render render x tl)) null (list (car g-node) "/" (car t-node) "/" (car m-node))))
+       (case-stream
+         (λ ()
+            ((cdr t-node) (cdr g-node) (cdr m-node)))))
+      (pair
+         (cons case-info case-stream)
+         (master-telomerase gens muxs fuzzs tels))))
 
 (define (get-stdout-fd n)
    (pair 
@@ -74,7 +60,6 @@
       ((if (eq? port stdout) flush-port close-port) port)
       res))
 
-;; info is ((n-bytes-written . printable-metadata) ...)
 (define (writer fds lls record-meta n)
    (let loop ((lls lls) (fds fds) (n n))
       (if (= n 0)
@@ -92,27 +77,6 @@
 
 (define (record-meta/stdout bytes len)
    (print* (list " → " (list->string bytes) ": " len)))
-
-(define test-lls 
-   ((master-telomerase 'no-opts-yet)
-      gen-test
-      'unusedatm
-      test-fuzzs
-      tel-test))
-
-;; startup 
-; grab sample paths (add implicitly - if none)
-; make output stream (add implicitly -o - if none)
-; get random seed (given | /dev/urandom | time)
-; make lls, fuzs, mixs etc by
-;  - walk over enabled ones
-;  - find entry function from global
-;  - apply entry func to seed x args x samples → node stream
-;  - add priorities of each based on cmd line args 
-;  - do a probabilistic stream merge : rs (... (pri thing ...) ...) → (thing (prob-merge rs' ... (pri ...) ...))
-;     + simple version: count sum of priorities, sort by them, make rand in range and see where it hits
-;     + can do better with a heap
-;  - return the enabled ones
 
 (import lib-args)
 
@@ -173,17 +137,13 @@
       (cond
          ((= (length parts) 1)
             ;; no priority given. default to 1 (lowest).
-            (cons (car parts) 1))
+            (cons 1 (car parts)))
          ((= (length parts) 2)
             (let ((pri (string->integer (cadr parts))))
                (if (and pri (> pri 0))
-                  (cons (car parts) pri)
+                  (cons pri (car parts))
                   str)))
          (else str))))
-
-(define (start-modules pris opts paths)
-   (show "would start modules " pris)
-   pris)
 
 ;; later: all-fu*-cut
 
@@ -193,7 +153,7 @@
        (pris (map try-split-priority mods))
        (bads (keep string? pris)))
       (if (null? bads)
-         (start-modules pris opts paths)
+         pris
          (begin
             (for-each (λ (x) (show "Bad module selection: " x)) bads)
             (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
@@ -201,16 +161,34 @@
             (print "Use $ radamsa -e help to list options")
             False))))
 
+(define (iterate thing)
+   (pair thing (iterate thing)))
+
+(define (simple-node name value)
+   (let ((node (cons name value)))
+      (iterate node)))
+
+; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
    (list
       (cons "foo"
          (λ (rs paths opts)
-            (print "Fuzzer foo started")
-            (λ (ll) (cons (vector 70 79 79) ll))))
+            (print "Fuzzer foo started.")
+            (simple-node "foo-fuzzer"
+               (λ (ll) (cons (vector 70 79 79) ll)))))
       (cons "bar"
          (λ (rs paths opts)
-            (print "Fuzzer bar started")
-            (λ (ll) (cons (vector 66 65 82) ll))))))
+            (print "Fuzzer bar started.")
+            (simple-node "bar-fuzzer"
+               (λ (ll) (cons (vector 66 65 82) ll)))))))
+
+(define ll-generators
+   (list
+      (cons "stars"
+         (λ (rs paths opts)
+            (print "Generator stars started.")
+            (simple-node "stars"
+               (list (vector 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42)))))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -252,43 +230,46 @@
    (let loop ((rs rs) (pris pris) (out null))
       (cond
          ((null? pris)
-            (make-muxer rs opts))
-         ((find-module mods (caar pris)) =>
+            (make-muxer rs out))
+         ((find-module mods (cdar pris)) =>
             (λ (modfn)
-               (lets ((rs seed (rand rs max-seed)))
-                  (loop rs (cdr pris) 
-                     (cons
-                        (cons (cdar pris) (modfn (seed->rands seed) paths opts))
-                        out)))))
+               (lets 
+                  ((rs seed (rand rs max-seed))
+                   (nodes (modfn (seed->rands seed) paths opts)))
+                  (loop rs (cdr pris) (cons (cons (caar pris) nodes) out)))))
          (else
             (error "I don't have a module called " (caar pris))))))
 
 (define (start-radamsa opts paths)
-   (cond
-      ((get opts 'help F)
-         (print-usage-text)
-         0)
-      ((not (get opts 'seed F))
-         ;; make a time-based seed unless one is given explicitly
-         (start-radamsa (add-seed opts) paths))
-      ((enable-modules (get opts 'fuzzers F) opts paths) =>
-         (λ (enabled) ; <- ((str . priority) ...), strs may be anything
-            ;; add a fail cont and handle all similarly in a let*
-            (show "ENABLED: " enabled) 
-            (lets
-               ((seed (string->seed (get opts 'seed F)))
-                (paths ;; add stdin as a sample if no files given and no blank requested
-                  (if (and (null? paths) (not (get opts 'blank F)))
-                     '("-") paths))
-                (rs (seed->rands seed))
-                (offset (get opts 'seek 0))
-                (lls (drop test-lls offset))
-                (fuzs (start rs ll-fuzzers enabled paths opts))
-                (fds (drop (get-stdout-fd 0) offset))
-                (n (get opts 'count F))
-                (lls fds (writer fds lls record-meta/stdout n)))
-               0)))
-      (else rval-failed-to-start-modules)))
+   (call/cc
+      (λ (ret)
+         (let ((fail (λ (why rval) (print why) (ret rval))))
+            (cond
+               ((get opts 'help F)
+                  (print-usage-text)
+                  0)
+               ((not (get opts 'seed F))
+                  ;; make a time-based seed unless one is given explicitly
+                  (start-radamsa (add-seed opts) paths))
+               (else
+                  (lets
+                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths))
+                      (_ (or f-pris (fail "Bad fuzzers" 1)))
+                      (g-pris (enable-modules (get opts 'generators F) opts paths))
+                      (_ (or g-pris (fail "Bad generators" 2)))
+                      (seed (string->seed (get opts 'seed F)))
+                      (paths ;; add stdin as a sample if no files given and no blank requested
+                        (if (and (null? paths) (not (get opts 'blank F)))
+                           '("-") paths))
+                      (rs (seed->rands seed))
+                      (offset (get opts 'seek 0))
+                      (rs fuzs (start rs ll-fuzzers f-pris paths opts))
+                      (rs gens (start rs ll-generators g-pris paths opts))
+                      (lls (drop (master-telomerase gens 'unusedatm fuzs tel-test) offset))
+                      (fds (drop (get-stdout-fd 0) offset))
+                      (n (get opts 'count F))
+                      (lls fds (writer fds lls record-meta/stdout n)))
+                     0)))))))
 
 (define (toy-meta)
    (bind (wait-mail)
