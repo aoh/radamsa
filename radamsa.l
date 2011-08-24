@@ -2,7 +2,7 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
-;; todo: metadata should be written as the data is generated, because making millions of files at a time will cause metadata to take megabytes → add a (save-meta data) function which will be silent, show names and sizes to stdout, show all to stdout or save to a file (if -[-]m[etadata] is given
+;; todo: maybe the ll should carry the index, and gen-fd probably needs it
 
 ; block-stream      : () | (bvec . block-stream)
 ; stream-fuzzer     : opts → samples → info (block-stream → block-stream)
@@ -38,6 +38,9 @@
 
 
 ;; test data generator
+
+(define rval-failed-to-start-modules 1)
+(define rval-crashed 127) ;; in-owl thread crash
 
 (define (enumr n)
    (pair 
@@ -104,10 +107,10 @@
       res))
 
 ;; info is ((n-bytes-written . printable-metadata) ...)
-(define (writer fds lls n)
-   (let loop ((lls lls) (fds fds) (infos null) (n n))
+(define (writer fds lls record-meta n)
+   (let loop ((lls lls) (fds fds) (n n))
       (if (= n 0)
-         (values lls fds (reverse infos))
+         (values lls fds)
          (lets 
             ((out fds (uncons fds F))
              (name fd out) ;; where to write, name = path, ip etc
@@ -116,8 +119,11 @@
             (if (not fd)
                (error "Failed to write: " name))
             (let ((written (send-stream data fd)))
-               ;(print* (list " + " (list->string info) ": " written "b"))
-               (loop lls fds (cons (cons written info) infos) (- n 1)))))))
+               (record-meta info written)
+               (loop lls fds (- n 1)))))))
+
+(define (record-meta/stdout bytes len)
+   (print* (list " → " (list->string bytes) ": " len)))
 
 (define test-lls 
    ((master-telomerase 'no-opts-yet)
@@ -152,7 +158,9 @@
      (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
      (enable "-e" "--enable" has-arg default "everything" 
          comment "Which modules to run? (pass help to list options)")
-     (blank "-r" "--tabula-rasa" comment "Do not read any sample data.")))
+     (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
+         comment "Skip start from nth file.")
+     (blank "-T" "--tabula-rasa" comment "Do not read any sample data.")))
 
 (define command-line-rules
    (cl-rules command-line-rule-exp))
@@ -167,7 +175,7 @@
 (define (urandom-seed)
    (let ((fd (open-input-file "/dev/urandom"))) ;; False if not there
       (if fd
-         (let ((data (interact fd 16)))
+         (let ((data (interact fd 8)))
             (close-port fd)
             (if (vector? data)
                (list->string
@@ -184,18 +192,11 @@
    (put opts 'seed
       (or (urandom-seed) (time-seed))))
 
-(define (toy-meta)
-   (bind (wait-mail)
-      (λ (from msg)
-         (mail from 'anon)
-         (toy-meta))))
-
 ;; str → integer
 (define (string->seed str)
    (if (string? str)
       (fold (λ (seed digit) (* (+ digit 1) (+ seed 1))) 1 (str-iter str))
       (error "bad seed: " str)))
-
 
 ;; str → str | (name . priority)
 (define (try-split-priority str)
@@ -212,7 +213,10 @@
          (else str))))
 
 (define (start-modules pris opts paths)
-   (show "would start modules " pris))
+   (show "would start modules " pris)
+   pris)
+
+;; later: all-fu*-cut
 
 (define (enable-modules selection opts paths)
    (lets
@@ -247,17 +251,21 @@
                      '("-") paths))
                 (_ (show " -> samples " paths))
                 (rs (seed->rands seed))
-                (lls fds info-bytes
-                  (writer get-stdout-fd test-lls (get opts 'count False))))
-               (for-each
-                  (λ (node)
-                     (lets ((n-written msg node))
-                        (print* (list " + " (list->string msg) ": " n-written "b"))))
-                  info-bytes)
+                (lls (drop test-lls (get opts 'seek 0)))
+                (lls fds
+                  (writer 
+                     get-stdout-fd 
+                     test-lls 
+                     record-meta/stdout
+                     (get opts 'count False))))
                0)))
-      (else
-         (show "failed to enable modules, and error already printed later: " (get opts 'enable F))
-         1)))
+      (else rval-failed-to-start-modules)))
+
+(define (toy-meta)
+   (bind (wait-mail)
+      (λ (from msg)
+         (mail from 'anon)
+         (toy-meta))))
 
 (λ (args)
    (fork-server 'meta toy-meta)
@@ -268,8 +276,11 @@
          (tuple-case res
             ((radamsa msg)
                (if (and (tuple? msg) (eq? 'finished (ref msg 1)))
-                  0 ;; normal exit
+                  (ref msg 2) ;; normal radamsa thread exit, return the exit value
                   (begin
                      (show "error: " msg)
-                     2))) ;; something funny (nothing more specific yet)
-            (else 1))))) ;; something unexpected
+                     rval-crashed)))
+            (else rval-crashed))))) ;; some other thread is talking to me. equally bad.
+
+
+
