@@ -2,41 +2,6 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
-;; todo: maybe the ll should carry the index, and gen-fd probably needs it
-
-; block-stream      : () | (bvec . block-stream)
-; stream-fuzzer     : opts → samples → info (block-stream → block-stream)
-; stream-generator  : opts → samples → info (block-stream ...)
-; stream-muxer      : opts → samples → info (block-stream block-stream → block-stream) 
-; generate          : opts → samples → info (block-stream ...)
-; step              : fuzz-node → block-stream fuzz-node
-
-; start-ll-fuzzers    : rs opts samples ll-fuzzers → priority-list
-; start-ll-muxers     : rs opts samples ll-muxers  → priority list
-; start-ll-generators : rs opts samples ll-muxers  → priority list
-
-; ll-genrs = ((info . ll) ...)
-; ll-mutas = ((info . ll) ...)
-; ll-muxrs = ((info . ll) ...)
-
-; ll-zipper rs merge str-a str-b → str
-;   zipper-fn rs sa sb cont → (block block ... . (cont sx sy))
-;   (not sure yet)
-
-; there are many telomerasen
-; telomerase rs muta str → str'
-
-; master-telomerase rs i sgens smuxs sfuzs → ((info . block-gen) ...)
-;  - pop a sgen
-;  - possibly pick stream fuzzers and attach
-;  - possibly pop and merge with smux(s)
-;  - collect data of each step 
-;  - pair (result <- thunk!) and proceed
-
-; fast forward:
-;  - just forward the list n times
-
-
 ;; test data generator
 
 (define rval-failed-to-start-modules 1)
@@ -64,7 +29,7 @@
       (pair 
          (cons 'test-fuzzer (λ (a b) a)) (loop))))
 
-;; test 
+(define (car> a b) (> (car a) (car b)))
 
 ;; convert content generators and changers to a stream of data streams
 
@@ -84,9 +49,12 @@
             (gen gens muxs fuzzs tels))))
    gen)
 
-(define (get-stdout-fd)
-   (pair (cons "stdout" stdout) 
-      (get-stdout-fd)))
+(define (get-stdout-fd n)
+   (pair 
+      (cons
+         (list->string (foldr (λ (x tl) (render render x tl)) null '(list "stdout-" n)))
+         stdout)
+      (get-stdout-fd (+ n 1))))
 
 ;; force and send a stream to a port
 (define (mail-blocks str port n)
@@ -131,7 +99,6 @@
       'unusedatm
       test-fuzzs
       tel-test))
-
 
 ;; startup 
 ; grab sample paths (add implicitly - if none)
@@ -232,6 +199,69 @@
             (print "Use $ radamsa -e help to list options")
             False))))
 
+(define ll-fuzzers   
+   (cons
+      (cons "foo"
+         (λ (rs paths opts)
+            (print "Fuzzer foo started")
+            (λ (ll) (cons (vector 70 79 79) ll))))
+      (cons "bar"
+         (λ (rs paths opts)
+            (print "Fuzzer bar started")
+            (λ (ll) (cons (vector 66 65 82) ll))))))
+
+
+; node : rs paths opts → ((info . value) ...)
+
+(define max-seed #x1000000000000)
+
+(define (pop-at opts n) ; (... (pri . ((info . val) ...)) ...) n → matching (info . val) x (... (pri . ...) ...)
+   (lets
+      ((node (car opts))
+       (pri ll node))
+      (if (< n pri)
+         (lets ((next ll (uncons ll F)))
+            (values next (cons (cons pri ll) (cdr opts))))
+         (lets ((grabbed opts (pop-at opts (- n pri))))
+            (values grabbed (cons node opts))))))
+
+(define (mux rs opts lim)
+   (lets 
+      ((rs n (rand rs lim))
+       (val opts (pop-at opts n)))
+      (pair val (mux rs opts lim))))
+
+;; mux streams probabilistically according to priorities
+(define (make-muxer rs opts)
+   (lets
+      ((rs seed (rand rs max-seed))
+       (opts (sort car> opts))
+       (total (fold + 0 (map car opts))))
+      (values rs (mux (seed->rands seed) opts total))))
+
+(define (find-module mods name)
+   (cond
+      ((null? mods) F)
+      ((equal? (caar mods) name) (cdar mods))
+      (else (find-module (cdr mods) name))))
+
+;; start node streams, each with their own rs, and mux them according to priorities
+; → rs' ((info . val) ...)
+(define (start rs mods pris paths opts)
+   (let loop ((rs rs) (pris pris) (out null))
+      (cond
+         ((null? pris)
+            (make-muxer rs opts))
+         ((find-module mods (caar pris)) =>
+            (λ (modfn)
+               (lets ((rs seed (rand rs max-seed)))
+                  (loop rs (cdr pris) 
+                     (cons
+                        (cons (cdar pris) (modfn (seed->rands seed) paths opts))
+                        out)))))
+         (else
+            (error "I don't have a module called " (caar pris))))))
+
 (define (start-radamsa opts paths)
    (cond
       ((get opts 'help F)
@@ -241,23 +271,19 @@
          ;; make a time-based seed unless one is given explicitly
          (start-radamsa (add-seed opts) paths))
       ((enable-modules (get opts 'enable F) opts paths) =>
-         (λ (enabled)
-            (show "ENABLED: " enabled)
+         (λ (enabled) ; <- ((str . priority) ...), strs may be anything
+            (show "ENABLED: " enabled) 
             (lets
                ((seed (string->seed (get opts 'seed F)))
-                (_ (show " -> seed " seed))
                 (paths ;; add stdin as a sample if no files given and no blank requested
                   (if (and (null? paths) (not (get opts 'blank F)))
                      '("-") paths))
-                (_ (show " -> samples " paths))
                 (rs (seed->rands seed))
-                (lls (drop test-lls (get opts 'seek 0)))
-                (lls fds
-                  (writer 
-                     get-stdout-fd 
-                     test-lls 
-                     record-meta/stdout
-                     (get opts 'count False))))
+                (offset (get opts 'seek 0))
+                (lls (drop test-lls offset))
+                (fds (drop (get-stdout-fd 0) offset))
+                (n (get opts 'count F))
+                (lls fds (writer fds lls record-meta/stdout n)))
                0)))
       (else rval-failed-to-start-modules)))
 
@@ -281,6 +307,3 @@
                      (show "error: " msg)
                      rval-crashed)))
             (else rval-crashed))))) ;; some other thread is talking to me. equally bad.
-
-
-
