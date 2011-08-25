@@ -2,13 +2,15 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
-;; test data generator
+;; todo: muxers should also enabled like the rest of the modules, unit muxer being a special trivial case
+;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
+;; todo: module startup should use (name-of node) instead of a separate string in the list
+;; todo: 
 
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
 
 (define (car> a b) (> (car a) (car b)))
-
 
 (define (get-stdout-fd n)
    (pair 
@@ -130,7 +132,6 @@
       ((mods (keep (λ (x) (> (string-length x) 0)) (c/,/ selection))) ;; split
        (pris (map try-split-priority mods))
        (bads (keep string? pris)))
-      (show " -> pris " pris)
       (if (null? bads)
          pris
          (begin
@@ -174,14 +175,6 @@
             (simple-node "xs"
                (list (vector 88 88 88 88 88 88 88 88 88 88 88 88 88 88 88)))))))
 
-;; test polymerase - add a note
-
-(define (polymerase ll muta) 
-   (cons (list->vector (string->list "Polymerase was here: ")) ll))
-
-(define pol-test
-   (let loop () (pair (cons "test-polymerase" polymerase) (loop))))
-
 (define ll-polymerase 
    (list
       (cons "pa"
@@ -196,6 +189,14 @@
             (simple-node "polb"
                (λ (ll mutagen)
                   (cons (vector 80 111 108 66 58) ll)))))))
+
+(define ll-muxers
+   (list
+      (const "unit"
+         (λ (rs paths opts)
+            (print "Unit muxer started")
+            (simple-node unit
+               (λ (ll ) ...))))))
 
 ;; todo: pop also a polymerase
 (define (master-polymerase gens muxs fuzzs tels)
@@ -290,8 +291,8 @@
                       (offset (get opts 'seek 0))
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs gens (start rs ll-generators g-pris paths opts))
-                      (rs tels (start rs ll-polymerase p-pris paths opts))
-                      (lls (drop (master-polymerase gens 'unusedatm fuzs pol-test) offset))
+                      (rs pols (start rs ll-polymerase p-pris paths opts))
+                      (lls (drop (master-polymerase gens 'unusedatm fuzs pols) offset))
                       (fds (drop (get-stdout-fd 0) offset))
                       (n (get opts 'count F))
                       (lls fds (writer fds lls record-meta/stdout n)))
@@ -317,5 +318,4 @@
                      (show "error: " msg)
                      rval-crashed)))
             (else rval-crashed))))) ;; some other thread is talking to me. equally bad.
-
 
