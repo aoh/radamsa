@@ -7,33 +7,8 @@
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
 
-;; test telomerase - add a note
-
-(define (telomerase ll muta) 
-   (cons (list->vector (string->list "Telomerase was here: ")) ll))
-
-(define tel-test
-   (let loop () (pair (cons "test-telomerase" telomerase) (loop))))
-
 (define (car> a b) (> (car a) (car b)))
 
-;; convert content generators and changers to a stream of data streams
-
-;; todo: pop a telomerase and use it
-
-(define (master-telomerase gens muxs fuzzs tels)
-   (lets
-      ((g-node gens (uncons gens F))
-       (m-node fuzzs (uncons fuzzs F))
-       (t-node tels (uncons tels F))
-       (case-info 
-         (foldr (λ (x tl) (render render x tl)) null (list (car g-node) "/" (car t-node) "/" (car m-node))))
-       (case-stream
-         (λ ()
-            ((cdr t-node) (cdr g-node) (cdr m-node)))))
-      (pair
-         (cons case-info case-stream)
-         (master-telomerase gens muxs fuzzs tels))))
 
 (define (get-stdout-fd n)
    (pair 
@@ -61,6 +36,7 @@
       res))
 
 (define (writer fds lls record-meta n)
+   (for-each print (ltake lls 10))
    (let loop ((lls lls) (fds fds) (n n))
       (if (= n 0)
          (values lls fds)
@@ -91,6 +67,8 @@
          comment "Which stream fuzzers to run? (pass help to list options)")
      (generators "-g" "--generators" has-arg default "all" 
          comment "Which stream generators to run? (pass help to list options)")
+     (polymerase "-t" "--transcribers" has-arg default "all" 
+         comment "Which stream mutator patterns to use? (pass help to list options)")
      (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
          comment "Skip start from nth file.")
      (blank "-T" "--tabula-rasa" comment "Do not read any sample data.")))
@@ -152,6 +130,7 @@
       ((mods (keep (λ (x) (> (string-length x) 0)) (c/,/ selection))) ;; split
        (pris (map try-split-priority mods))
        (bads (keep string? pris)))
+      (show " -> pris " pris)
       (if (null? bads)
          pris
          (begin
@@ -188,7 +167,50 @@
          (λ (rs paths opts)
             (print "Generator stars started.")
             (simple-node "stars"
-               (list (vector 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42)))))))
+               (list (vector 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42)))))
+      (cons "xs"
+         (λ (rs paths opts)
+            (print "Generator xs started.")
+            (simple-node "xs"
+               (list (vector 88 88 88 88 88 88 88 88 88 88 88 88 88 88 88)))))))
+
+;; test polymerase - add a note
+
+(define (polymerase ll muta) 
+   (cons (list->vector (string->list "Polymerase was here: ")) ll))
+
+(define pol-test
+   (let loop () (pair (cons "test-polymerase" polymerase) (loop))))
+
+(define ll-polymerase 
+   (list
+      (cons "pa"
+         (λ (rs paths opts)
+            (print "Polymerase A started")
+            (simple-node "pola"
+               (λ (ll mutagen)
+                  (cons (vector 80 111 108 65 58) ll)))))
+      (cons "pb"
+         (λ (rs paths opts)
+            (print "Polymerase B started")
+            (simple-node "polb"
+               (λ (ll mutagen)
+                  (cons (vector 80 111 108 66 58) ll)))))))
+
+;; todo: pop also a polymerase
+(define (master-polymerase gens muxs fuzzs tels)
+   (lets
+      ((g-node gens (uncons gens F))
+       (m-node fuzzs (uncons fuzzs F))
+       (t-node tels (uncons tels F))
+       (case-info 
+         (foldr (λ (x tl) (render render x tl)) null (list (car g-node) "/" (car t-node) "/" (car m-node))))
+       (case-stream
+         (λ ()
+            ((cdr t-node) (cdr g-node) (cdr m-node)))))
+      (pair
+         (cons case-info case-stream)
+         (master-polymerase gens muxs fuzzs tels))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -201,7 +223,7 @@
       (if (< n pri)
          (lets ((next ll (uncons ll F)))
             (values next (cons (cons pri ll) (cdr opts))))
-         (lets ((grabbed opts (pop-at opts (- n pri))))
+         (lets ((grabbed opts (pop-at (cdr opts) (- n pri))))
             (values grabbed (cons node opts))))))
 
 (define (mux rs opts lim)
@@ -212,6 +234,7 @@
 
 ;; mux streams probabilistically according to priorities
 (define (make-muxer rs opts)
+   (show "Making a muxer for opts " opts)
    (lets
       ((rs seed (rand rs max-seed))
        (opts (sort car> opts))
@@ -253,10 +276,12 @@
                   (start-radamsa (add-seed opts) paths))
                (else
                   (lets
-                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths))
-                      (_ (or f-pris (fail "Bad fuzzers" 1)))
+                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths)) ; <-- move fail cont here
+                      (_ (or f-pris (fail "Bad fuzzers" 1)))                     ; -----^
                       (g-pris (enable-modules (get opts 'generators F) opts paths))
                       (_ (or g-pris (fail "Bad generators" 2)))
+                      (p-pris (enable-modules (get opts 'polymerase F) opts paths))
+                      (_ (or p-pris (fail "Bad transcribers" 3)))
                       (seed (string->seed (get opts 'seed F)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (not (get opts 'blank F)))
@@ -265,7 +290,8 @@
                       (offset (get opts 'seek 0))
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs gens (start rs ll-generators g-pris paths opts))
-                      (lls (drop (master-telomerase gens 'unusedatm fuzs tel-test) offset))
+                      (rs tels (start rs ll-polymerase p-pris paths opts))
+                      (lls (drop (master-polymerase gens 'unusedatm fuzs pol-test) offset))
                       (fds (drop (get-stdout-fd 0) offset))
                       (n (get opts 'count F))
                       (lls fds (writer fds lls record-meta/stdout n)))
