@@ -2,10 +2,9 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
-;; todo: muxers should also enabled like the rest of the modules, unit muxer being a special trivial case
+;; todo: metadata will be a tree after adding muxers. would make sense to use sexps for it. (telid fuzid (sample path))
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
-;; todo: 
 
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
@@ -38,7 +37,6 @@
       res))
 
 (define (writer fds lls record-meta n)
-   (for-each print (ltake lls 10))
    (let loop ((lls lls) (fds fds) (n n))
       (if (= n 0)
          (values lls fds)
@@ -65,12 +63,14 @@
      (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
          default "1" comment "How many outputs to generate?")
      (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
-     (fuzzers "-f" "--fuzzers" has-arg default "all,sample=50" 
+     (fuzzers "-f" "--fuzzers" has-arg default "foo,bar" 
          comment "Which stream fuzzers to run? (pass help to list options)")
-     (generators "-g" "--generators" has-arg default "all" 
+     (generators "-g" "--generators" has-arg default "xs,stars=2" 
          comment "Which stream generators to run? (pass help to list options)")
-     (polymerase "-t" "--transcribers" has-arg default "all" 
+     (polymerase "-t" "--transcribers" has-arg default "pa,pb" 
          comment "Which stream mutator patterns to use? (pass help to list options)")
+     (muxers "-m" "--muxers" has-arg default "unit" 
+         comment "Which stream muxers to use? (pass help to list options)")
      (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
          comment "Skip start from nth file.")
      (blank "-T" "--tabula-rasa" comment "Do not read any sample data.")))
@@ -192,11 +192,22 @@
 
 (define ll-muxers
    (list
-      (const "unit"
+      (cons "unit" ;; always pick the first stream
          (λ (rs paths opts)
             (print "Unit muxer started")
-            (simple-node unit
-               (λ (ll ) ...))))))
+            (simple-node "unit"
+               (λ (a b) a))))))
+
+;; operation of muxers
+; - ll ll' → ll"
+;
+;; operation of master telomerase
+; - choose how many sample streams to use
+; - while nstreams > 1 or (iprob hits or just 1 stream which comes from a sample)
+;    + attach telomerase + mutator to one or
+;    + mux two together (if more than one)
+; - finally there is only one stream
+; - if the stream is an unfuzzed sample
 
 ;; todo: pop also a polymerase
 (define (master-polymerase gens muxs fuzzs tels)
