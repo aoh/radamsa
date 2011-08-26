@@ -51,8 +51,8 @@
                (record-meta info written)
                (loop lls fds (- n 1)))))))
 
-(define (record-meta/stdout bytes len)
-   (print* (list " → " (list->string bytes) ": " len)))
+(define (record-meta/stdout info len)
+   (print* (list " → " info ": " len)))
 
 (import lib-args)
 
@@ -162,6 +162,8 @@
             (simple-node "bar-fuzzer"
                (λ (ll) (cons (vector 66 65 82) ll)))))))
 
+(define sample-gen-name "sample") ; <- named to be able to check for this as a special case (like stdin)
+
 (define ll-generators
    (list
       (cons "stars"
@@ -190,6 +192,7 @@
                (λ (ll mutagen)
                   (cons (vector 80 111 108 66 58) ll)))))))
 
+; muxer : ll ll → ll
 (define ll-muxers
    (list
       (cons "unit" ;; always pick the first stream
@@ -198,31 +201,70 @@
             (simple-node "unit"
                (λ (a b) a))))))
 
-;; operation of muxers
-; - ll ll' → ll"
-;
-;; operation of master telomerase
-; - choose how many sample streams to use
-; - while nstreams > 1 or (iprob hits or just 1 stream which comes from a sample)
-;    + attach telomerase + mutator to one or
-;    + mux two together (if more than one)
-; - finally there is only one stream
-; - if the stream is an unfuzzed sample
+;; master polymerase controls how many streams we'll use, and chooses how to mux n fuzz them together
 
-;; todo: pop also a polymerase
-(define (master-polymerase gens muxs fuzzs tels)
+;; grab some streams 
+(define (choose-streams rs gens)
+   (let loop ((rs rs) (gens gens) (taken null))
+      (lets ((rs n (rand rs (* 2 (length taken)))))
+         (if (eq? n 0)
+            (lets ((this gens (uncons gens F)))
+               (loop rs gens (cons this taken)))
+            (values rs gens taken)))))
+
+(define (plain-sample? node) 
+   (string? (car node))) ;; todo: not really
+
+(define (attach-fuzzer fuzs tels node)
    (lets
-      ((g-node gens (uncons gens F))
-       (m-node fuzzs (uncons fuzzs F))
-       (t-node tels (uncons tels F))
-       (case-info 
-         (foldr (λ (x tl) (render render x tl)) null (list (car g-node) "/" (car t-node) "/" (car m-node))))
-       (case-stream
-         (λ ()
-            ((cdr t-node) (cdr g-node) (cdr m-node)))))
-      (pair
-         (cons case-info case-stream)
-         (master-polymerase gens muxs fuzzs tels))))
+      ((m-node fuzs (uncons fuzs F))
+       (t-node tels (uncons tels F)))
+      (values fuzs tels
+         (cons
+            (list (car t-node) (car m-node) (car node)) ;; info
+            (λ () ((cdr t-node) (cdr node) (cdr m-node))))))) ;; lazy data 
+
+;; merger many data streams to one using the fuzzers and muxers
+(define (master-merge rs muxs fuzs tels lls)
+   (lets ((rs n (rand rs 5)))
+      (cond
+         ((eq? n 0) ;; permute
+            (lets ((rs lls (random-permutation rs lls)))
+               (master-merge rs muxs fuzs tels lls)))
+         ((eq? n 1) ;; add a stream fuzzer to first
+            (lets ((fuzs tels node (attach-fuzzer fuzs tels (car lls))))
+               (master-merge rs muxs fuzs tels (cons node (cdr lls)))))
+         ((eq? n 2) ;; merge two streams (if more than one)
+            (if (not (null? (cdr lls)))
+               (lets 
+                  ((m-node muxs (uncons muxs F))
+                   (m-info muxer m-node)
+                   (a (car lls))
+                   (b (cadr lls)))
+                  (master-merge rs muxs fuzs tels
+                     (cons
+                        (cons (list m-info (car a) (car b)) 
+                           (λ () (muxer (cdr a) (cdr b))))
+                        (cddr lls))))
+               (master-merge rs muxs fuzs tels lls)))
+         ((and (null? (cdr lls)) (not (plain-sample? (car lls)))) ;; else try exit
+            (values rs muxs fuzs tels (car lls)))
+         (else ;; else keep muxin
+            (master-merge rs muxs fuzs tels lls)))))
+
+
+
+         
+      
+
+;; todo: needs to act differently if only one sample which is stdin, so some special handling will be needed
+(define (master-polymerase rs gens muxs fuzzs tels)
+   (lets
+      ((rs gens tomux (choose-streams rs gens)) ;; choose streams to fuzz
+       (rs muxs fuzs tels node
+         (master-merge rs muxs fuzzs tels tomux))) ;; combine them to one stream
+      (pair node  ;; <- data to generate
+         (master-polymerase rs gens muxs fuzzs tels))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -246,12 +288,13 @@
 
 ;; mux streams probabilistically according to priorities
 (define (make-muxer rs opts)
-   (show "Making a muxer for opts " opts)
-   (lets
-      ((rs seed (rand rs max-seed))
-       (opts (sort car> opts))
-       (total (fold + 0 (map car opts))))
-      (values rs (mux (seed->rands seed) opts total))))
+   (if (null? (cdr opts))
+      (values rs (cdar opts)) ;; no need to mux
+      (lets
+         ((rs seed (rand rs max-seed))
+          (opts (sort car> opts))
+          (total (fold + 0 (map car opts))))
+         (values rs (mux (seed->rands seed) opts total)))))
 
 (define (find-module mods name)
    (cond
@@ -294,6 +337,8 @@
                       (_ (or g-pris (fail "Bad generators" 2)))
                       (p-pris (enable-modules (get opts 'polymerase F) opts paths))
                       (_ (or p-pris (fail "Bad transcribers" 3)))
+                      (m-pris (enable-modules (get opts 'muxers F) opts paths))
+                      (_ (or m-pris (fail "Bad muxers" 4)))
                       (seed (string->seed (get opts 'seed F)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (not (get opts 'blank F)))
@@ -303,7 +348,8 @@
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs gens (start rs ll-generators g-pris paths opts))
                       (rs pols (start rs ll-polymerase p-pris paths opts))
-                      (lls (drop (master-polymerase gens 'unusedatm fuzs pols) offset))
+                      (rs muxs (start rs ll-muxers m-pris paths opts))
+                      (lls (drop (master-polymerase rs gens muxs fuzs pols) offset))
                       (fds (drop (get-stdout-fd 0) offset))
                       (n (get opts 'count F))
                       (lls fds (writer fds lls record-meta/stdout n)))
