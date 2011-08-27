@@ -2,7 +2,8 @@
 ;;; Radamsa - a general purpose test data generator
 ;;;
 
-;; todo: metadata will be a tree after adding muxers. would make sense to use sexps for it. (telid fuzid (sample path))
+;; todo: muxer and mutator polymerase could be merged to the muxer and mutator streams, since they are always used in pairs 
+;; todo: muxers also need a polymerase
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
 
@@ -67,8 +68,10 @@
          comment "Which stream fuzzers to run? (pass help to list options)")
      (generators "-g" "--generators" has-arg default "xs,stars=2" 
          comment "Which stream generators to run? (pass help to list options)")
-     (polymerase "-t" "--transcribers" has-arg default "pa,pb" 
+     (polymerase "-p" "--polymerase" has-arg default "pa,pb" 
          comment "Which stream mutator patterns to use? (pass help to list options)")
+     (muxer-polymerase "-P" "--muxer-polymerase" has-arg default "drop" 
+         comment "Which muxer mutator patterns to use? (pass help to list options)")
      (muxers "-m" "--muxers" has-arg default "unit" 
          comment "Which stream muxers to use? (pass help to list options)")
      (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
@@ -191,6 +194,14 @@
             (simple-node "polb"
                (λ (ll mutagen)
                   (cons (vector 80 111 108 66 58) ll)))))))
+
+(define ll-muxer-polymerase 
+   (list
+      (cons "drop"
+         (λ (rs paths opts)
+            (print "Muxer polymerase drop started.")
+            (simple-node "drop"
+               (λ (all bll) all))))))
 
 ; muxer : ll ll → ll
 (define ll-muxers
@@ -339,6 +350,8 @@
                       (_ (or p-pris (fail "Bad transcribers" 3)))
                       (m-pris (enable-modules (get opts 'muxers F) opts paths))
                       (_ (or m-pris (fail "Bad muxers" 4)))
+                      (mp-pris (enable-modules (get opts 'muxer-polymerase F) opts paths))
+                      (_ (or mp-pris (fail "Bad muxers polymerase" 4)))
                       (seed (string->seed (get opts 'seed F)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (not (get opts 'blank F)))
@@ -349,6 +362,7 @@
                       (rs gens (start rs ll-generators g-pris paths opts))
                       (rs pols (start rs ll-polymerase p-pris paths opts))
                       (rs muxs (start rs ll-muxers m-pris paths opts))
+                      (rs mpol (start rs ll-muxer-polymerase mp-pris paths opts))
                       (lls (drop (master-polymerase rs gens muxs fuzs pols) offset))
                       (fds (drop (get-stdout-fd 0) offset))
                       (n (get opts 'count F))
