@@ -279,12 +279,12 @@
             (master-merge rs muxs fuzs lls)))))
 
 ;; todo: needs to act differently if only one sample which is stdin, so some special handling will be needed
-(define (master-polymerase rs gens muxs fuzzs)
+(define (master-polymerase rs gens muxs fuzs)
    (lets
       ((rs gens tomux (choose-streams rs gens)) ;; choose some streams to use
-       (rs muxs fuzs node (master-merge rs muxs fuzzs tomux))) ;; combine them to one stream
+       (rs muxs fuzs node (master-merge rs muxs fuzs tomux))) ;; combine them to one stream
       (pair node  ;; <- data to generate
-         (master-polymerase rs gens muxs fuzzs))))
+         (master-polymerase rs gens muxs fuzs))))
 
 ; node : rs paths opts → ((info . value) ...)
 
