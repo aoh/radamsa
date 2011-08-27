@@ -6,6 +6,7 @@
 ;; todo: muxers also need a polymerase
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
+;; todo: stream muxer: cat a b → a ++ b
 
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
@@ -43,8 +44,10 @@
          (values lls fds)
          (lets 
             ((out fds (uncons fds F))
+             (_ (show " -> writer will write to " out))
              (name fd out) ;; where to write, name = path, ip etc
              (node lls (uncons lls F)) ;; what to write
+             (_ (show " -> writer will write " node))
              (info data node))
             (if (not fd)
                (error "Failed to write: " name))
@@ -68,7 +71,7 @@
          comment "Which stream fuzzers to run? (pass help to list options)")
      (generators "-g" "--generators" has-arg default "xs,stars=2" 
          comment "Which stream generators to run? (pass help to list options)")
-     (polymerase "-p" "--polymerase" has-arg default "pa,pb" 
+     (polymerase "-p" "--polymerase" has-arg default "pa" 
          comment "Which stream mutator patterns to use? (pass help to list options)")
      (muxer-polymerase "-P" "--muxer-polymerase" has-arg default "drop" 
          comment "Which muxer mutator patterns to use? (pass help to list options)")
@@ -186,13 +189,14 @@
          (λ (rs paths opts)
             (print "Polymerase A started")
             (simple-node "pola"
-               (λ (ll mutagen)
+               (λ (mutagen ll)
+                  (show "POLA called with ll " ll)
                   (cons (vector 80 111 108 65 58) ll)))))
       (cons "pb"
          (λ (rs paths opts)
             (print "Polymerase B started")
             (simple-node "polb"
-               (λ (ll mutagen)
+               (λ (mutagen ll)
                   (cons (vector 80 111 108 66 58) ll)))))))
 
 (define ll-muxer-polymerase 
@@ -221,61 +225,50 @@
          (if (eq? n 0)
             (lets ((this gens (uncons gens F)))
                (loop rs gens (cons this taken)))
-            (values rs gens taken)))))
+            (values rs gens taken))))
+   ;(lets ((this gens (uncons gens F)))
+   ;   (values rs gens (list this)))
+   )
 
 (define (plain-sample? node) 
    (string? (car node))) ;; todo: not really
 
-(define (attach-fuzzer fuzs tels node)
-   (lets
-      ((m-node fuzs (uncons fuzs F))
-       (t-node tels (uncons tels F)))
-      (values fuzs tels
-         (cons
-            (list (car t-node) (car m-node) (car node)) ;; info
-            (λ () ((cdr t-node) (cdr node) (cdr m-node))))))) ;; lazy data 
-
 ;; merger many data streams to one using the fuzzers and muxers
-(define (master-merge rs muxs fuzs tels lls)
+(define (master-merge rs muxs fuzs lls)
    (lets ((rs n (rand rs 5)))
+      (show " -> " n)
       (cond
          ((eq? n 0) ;; permute
             (lets ((rs lls (random-permutation rs lls)))
-               (master-merge rs muxs fuzs tels lls)))
+               (master-merge rs muxs fuzs lls)))
          ((eq? n 1) ;; add a stream fuzzer to first
-            (lets ((fuzs tels node (attach-fuzzer fuzs tels (car lls))))
-               (master-merge rs muxs fuzs tels (cons node (cdr lls)))))
+            (lets ((fuzz fuzs (uncons fuzs F)))
+               (master-merge rs muxs fuzs (cons (fuzz (car lls)) (cdr lls)))))
          ((eq? n 2) ;; merge two streams (if more than one)
             (if (not (null? (cdr lls)))
                (lets 
-                  ((m-node muxs (uncons muxs F))
-                   (m-info muxer m-node)
-                   (a (car lls))
-                   (b (cadr lls)))
-                  (master-merge rs muxs fuzs tels
-                     (cons
-                        (cons (list m-info (car a) (car b)) 
-                           (λ () (muxer (cdr a) (cdr b))))
-                        (cddr lls))))
-               (master-merge rs muxs fuzs tels lls)))
+                  ((mux muxs (uncons muxs F))
+                   (a (car lls)) (b (cadr lls)))
+                  (master-merge rs muxs fuzs
+                     (cons (mux a b) (cddr lls))))
+               (master-merge rs muxs fuzs lls)))
          ((and (null? (cdr lls)) (not (plain-sample? (car lls)))) ;; else try exit
-            (values rs muxs fuzs tels (car lls)))
+            (values rs muxs fuzs (car lls)))
          (else ;; else keep muxin
-            (master-merge rs muxs fuzs tels lls)))))
-
-
-
-         
-      
+            (if (plain-sample? (car lls))
+               (print "Continuing because this is a plain sample"))
+            (master-merge rs muxs fuzs lls)))))
 
 ;; todo: needs to act differently if only one sample which is stdin, so some special handling will be needed
-(define (master-polymerase rs gens muxs fuzzs tels)
+(define (master-polymerase rs gens muxs fuzzs)
    (lets
-      ((rs gens tomux (choose-streams rs gens)) ;; choose streams to fuzz
-       (rs muxs fuzs tels node
-         (master-merge rs muxs fuzzs tels tomux))) ;; combine them to one stream
+      ((rs gens tomux (choose-streams rs gens)) ;; choose some streams to use
+       (_ (show "Streams n: " (length tomux)))
+       (rs muxs fuzs node (master-merge rs muxs fuzzs tomux))) ;; combine them to one stream
+      (print "Master polymerase node done.")
+      (show " - node is " node)
       (pair node  ;; <- data to generate
-         (master-polymerase rs gens muxs fuzzs tels))))
+         (master-polymerase rs gens muxs fuzzs))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -329,6 +322,40 @@
          (else
             (error "I don't have a module called " (caar pris))))))
 
+;; merge muxer polymerase stream and muxer stream to a stream muxer stream
+(define (muxer-stream pols muxs)
+   (lets
+      ((pol pols (uncons pols F))
+       (mux muxs (uncons muxs F)))
+      (pair
+         (λ (aln bln)
+            (print " **** MUXER CALLED WITH 2 STREAMS")
+            (show " - STREAM 1 " aln)
+            (show " - STREAM 2 " bln)
+            (lets
+               ((a-info a-data aln)
+                (b-info b-data bln))
+               (cons
+                  (list (car pol) (car mux) a-info b-info) ;; (pattern muxer str-a str-b)
+                  (λ () ((cdr pol) (cdr mux) a-data b-data))))) ;; <- be lazy
+         (muxer-stream pols muxs))))
+
+;; ditto, but for stream muxers which take just one stream as argument
+(define (fuzzer-stream pols fuzs)
+   (lets
+      ((pol pols (uncons pols F))
+       (fuz fuzs (uncons fuzs F)))
+      (pair
+         (λ (aln)
+            (show " *** FUZZER CALLED WITH 1 STREAM *** " aln)
+            (lets ((a-info a-data aln))
+               (cons
+                  (list (car pol) (car fuz) a-info) ;; (pattern muxer str-a)
+                  (λ () 
+                     (print* (list " + calling polymerase " pol " and fuzzer " fuz " for data stream " a-data))
+                     ((cdr pol) (cdr fuz) a-data))))) ;; <- be lazy
+         (fuzzer-stream pols fuzs))))
+
 (define (start-radamsa opts paths)
    (call/cc
       (λ (ret)
@@ -342,9 +369,9 @@
                   (start-radamsa (add-seed opts) paths))
                (else
                   (lets
-                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths)) ; <-- move fail cont here
+                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths)) ; <-- move fail cont to enable-modules
                       (_ (or f-pris (fail "Bad fuzzers" 1)))                     ; -----^
-                      (g-pris (enable-modules (get opts 'generators F) opts paths))
+                      (g-pris (enable-modules (get opts 'generators F) opts paths)) ;; <- getting boilerplatish for a few lines
                       (_ (or g-pris (fail "Bad generators" 2)))
                       (p-pris (enable-modules (get opts 'polymerase F) opts paths))
                       (_ (or p-pris (fail "Bad transcribers" 3)))
@@ -358,12 +385,14 @@
                            '("-") paths))
                       (rs (seed->rands seed))
                       (offset (get opts 'seek 0))
-                      (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs gens (start rs ll-generators g-pris paths opts))
+                      (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs pols (start rs ll-polymerase p-pris paths opts))
+                      (fuzs (fuzzer-stream pols fuzs)) ;; fuse available polymerase with stream fuzzers
                       (rs muxs (start rs ll-muxers m-pris paths opts))
                       (rs mpol (start rs ll-muxer-polymerase mp-pris paths opts))
-                      (lls (drop (master-polymerase rs gens muxs fuzs pols) offset))
+                      (muxs (muxer-stream mpol muxs)) ;; fuze available muxer polymerase with muxers
+                      (lls (drop (master-polymerase rs gens muxs fuzs) offset)) ;; <- would be nicer to zip also lls and fds together and fast forward
                       (fds (drop (get-stdout-fd 0) offset))
                       (n (get opts 'count F))
                       (lls fds (writer fds lls record-meta/stdout n)))
