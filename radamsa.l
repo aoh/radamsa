@@ -11,6 +11,9 @@
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash
 
+(define (renderer val tl)
+   (render render val tl))
+
 (define (car> a b) (> (car a) (car b)))
 
 (define (get-stdout-fd n)
@@ -131,7 +134,7 @@
 
 ;; later: all-fu*-cut
 
-(define (enable-modules selection opts paths)
+(define (enable-modules selection opts paths fail)
    (lets
       ((mods (keep (λ (x) (> (string-length x) 0)) (c/,/ selection))) ;; split
        (pris (map try-split-priority mods))
@@ -143,43 +146,65 @@
             (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
             (print "For example -e foo,bar,baz=2 will use baz about as often as foo and bar combined.")
             (print "Use $ radamsa -e help to list options")
-            False))))
+            (fail False)))))
 
 (define (iterate thing)
    (pair thing (iterate thing)))
 
+;; iterate the same thing
 (define (simple-node name value)
    (let ((node (cons name value)))
       (iterate node)))
 
+;; iterate the same thing carrying rs
+(define (rs-fold-node rs name value)
+   (pair (cons name (value rs))
+      (lets ((digit rs (uncons rs F)))
+         (rs-fold-node rs name value))))
+      
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
    (list
       (cons "foo"
          (λ (rs paths opts)
             (print "Fuzzer foo started.")
-            (simple-node "foo-fuzzer"
-               (λ (ll) (cons (vector 70 79 79) ll)))))
+            (rs-fold-node rs "foo" 
+               (λ (rs)
+                  (λ (ll)
+                     (lets 
+                        ((rs n (rand rs 100))
+                         (bytes (foldr renderer null (list "[foo-" n "]"))))
+                        (cons (list->byte-vector bytes) ll)))))))
       (cons "bar"
          (λ (rs paths opts)
             (print "Fuzzer bar started.")
-            (simple-node "bar-fuzzer"
-               (λ (ll) (cons (vector 66 65 82) ll)))))))
+            (rs-fold-node rs "bar" 
+               (λ (rs)
+                  (λ (ll)
+                     (lets 
+                        ((rs n (rand rs 100))
+                         (bytes (foldr renderer null (list "[bar-" n "]"))))
+                        (cons (list->byte-vector bytes) ll)))))))))
 
 (define sample-gen-name "sample") ; <- named to be able to check for this as a special case (like stdin)
+
+(define (string->vec str)
+   (list->byte-vector (render render str null)))
 
 (define ll-generators
    (list
       (cons "stars"
          (λ (rs paths opts)
             (print "Generator stars started.")
-            (simple-node "stars"
-               (list (vector 42 42 42 42 42 42 42 42 42 42 42 42 42 42 42)))))
+            (let ((s (string->vec "********")))
+               (simple-node "stars"
+                  (list s s s s s s s)))))
       (cons "xs"
          (λ (rs paths opts)
             (print "Generator xs started.")
-            (simple-node "xs"
-               (list (vector 88 88 88 88 88 88 88 88 88 88 88 88 88 88 88)))))))
+            (let ((s (string->vec "xxxxxx")))
+               (simple-node "xs" 
+                  (list s s s s s s)))))))
 
 (define ll-polymerase 
    (list
@@ -188,13 +213,13 @@
             (print "Polymerase A started")
             (simple-node "pola"
                (λ (mutagen ll)
-                  (cons (vector 80 111 108 65 58) ll)))))
+                  (cons (vector 80 111 108 65 58) (mutagen ll))))))
       (cons "pb"
          (λ (rs paths opts)
             (print "Polymerase B started")
             (simple-node "polb"
                (λ (mutagen ll)
-                  (cons (vector 80 111 108 66 58) ll)))))))
+                  (cons (vector 80 111 108 66 58) (mutagen ll))))))))
 
 (define ll-muxer-polymerase 
    (list
@@ -354,16 +379,11 @@
                   (start-radamsa (add-seed opts) paths))
                (else
                   (lets
-                     ((f-pris (enable-modules (get opts 'fuzzers F) opts paths)) ; <-- move fail cont to enable-modules
-                      (_ (or f-pris (fail "Bad fuzzers" 1)))                     ; -----^
-                      (g-pris (enable-modules (get opts 'generators F) opts paths)) ;; <- getting boilerplatish for a few lines
-                      (_ (or g-pris (fail "Bad generators" 2)))
-                      (p-pris (enable-modules (get opts 'polymerase F) opts paths))
-                      (_ (or p-pris (fail "Bad transcribers" 3)))
-                      (m-pris (enable-modules (get opts 'muxers F) opts paths))
-                      (_ (or m-pris (fail "Bad muxers" 4)))
-                      (mp-pris (enable-modules (get opts 'muxer-polymerase F) opts paths))
-                      (_ (or mp-pris (fail "Bad muxers polymerase" 4)))
+                     ((f-pris  (enable-modules (get opts 'fuzzers F) opts paths fail))
+                      (g-pris  (enable-modules (get opts 'generators F) opts paths fail))
+                      (p-pris  (enable-modules (get opts 'polymerase F) opts paths fail))
+                      (m-pris  (enable-modules (get opts 'muxers F) opts paths fail))
+                      (mp-pris (enable-modules (get opts 'muxer-polymerase F) opts paths fail))
                       (seed (string->seed (get opts 'seed F)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (not (get opts 'blank F)))
