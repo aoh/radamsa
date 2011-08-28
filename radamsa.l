@@ -19,7 +19,6 @@
 (define (car> a b) (> (car a) (car b)))
 
 (define (get-stdout-fd n)
-   (print "")
    (pair 
       (cons
          (list->string (foldr (λ (x tl) (render render x tl)) null '(list "stdout-" n)))
@@ -60,7 +59,9 @@
                (loop lls fds (- n 1)))))))
 
 (define (record-meta/stdout info len)
-   (print* (list " → " info ": " len)))
+   ;(print* (list " → " info ": " len))
+   42
+)
 
 (import lib-args)
 
@@ -71,9 +72,9 @@
      (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
          default "1" comment "How many outputs to generate?")
      (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
-     (fuzzers "-f" "--fuzzers" has-arg default "foo,bar" 
+     (fuzzers "-f" "--fuzzers" has-arg default "star" 
          comment "Which stream fuzzers to run? (pass help to list options)")
-     (generators "-g" "--generators" has-arg default "as=2,bs" 
+     (generators "-g" "--generators" has-arg default "blank" 
          comment "Which stream generators to run? (pass help to list options)")
      (polymerase "-p" "--polymerase" has-arg default "od" 
          comment "Which stream mutator patterns to use? (pass help to list options)")
@@ -165,52 +166,131 @@
    (pair (cons name (value rs))
       (lets ((digit rs (uncons rs F)))
          (rs-fold-node rs name value))))
-      
+
+;;; Stream fuzzers -----------------------------------------------------------
+
+(define (byte-vector->list bvec)
+   (let ((n (sizeb bvec)))
+      (if (eq? n 0)
+         null
+         (let loop ((pos (- n 1)) (out null))
+            (cond
+               ((eq? pos 0)
+                  (cons (refb bvec pos) out))
+               (else
+                  (lets ((posp _ (fx- pos 1)))
+                     (loop posp (cons (refb bvec pos) out)))))))))
+
+;; a silly fixnum/primitive mess, since this is fairly commonly used
+(define (edit-byte-vector bvec edit-pos fn)
+   (let ((len (sizeb bvec)))
+      (if (eq? len 0)
+         bvec
+         (let loop ((pos (- len 1)) (out null))
+            (let ((val (refb bvec pos)))
+               (if (eq? pos edit-pos)
+                  (if (eq? pos 0)
+                     (list->byte-vector (fn val out))
+                     (lets ((pos _ (fx- pos 1)))
+                        (loop pos (fn val out))))
+                  (if (eq? pos 0)
+                     (list->byte-vector (cons val out))
+                     (lets ((pos _ (fx- pos 1)))
+                        (loop pos (cons val out))))))))))
+
+(define (sed-star rs)
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons
+            (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl)))
+            (cdr ll)))))
+
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
    (list
-      (cons "foo"
+      (cons "star"
          (λ (rs paths opts)
             (print "Fuzzer foo started.")
-            (rs-fold-node rs "foo" 
-               (λ (rs)
-                  (λ (ll)
-                     (lets 
-                        ((rs n (rand rs 100))
-                         (bytes (foldr renderer null (list "[foo-" n "]"))))
-                        (cons (list->byte-vector bytes) ll)))))))
-      (cons "bar"
-         (λ (rs paths opts)
-            (print "Fuzzer bar started.")
-            (rs-fold-node rs "bar" 
-               (λ (rs)
-                  (λ (ll)
-                     (lets 
-                        ((rs n (rand rs 100))
-                         (bytes (foldr renderer null (list "[bar-" n "]"))))
-                        (cons (list->byte-vector bytes) ll)))))))))
-
-(define sample-gen-name "sample") ; <- named to be able to check for this as a special case (like stdin)
+            (rs-fold-node rs "star" sed-star)))))
 
 (define (string->vec str)
    (list->byte-vector (render render str null)))
 
 ;;; Stream generators -------------------------------------------------
 
+(define avg-block-size 4096)
+(define max-block-size (* 2 avg-block-size))
+
+;; bvec|F bvec → bvec
+(define (merge head tail)
+   (if head
+      (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
+      tail))
+
+(define (rand-block-size rs)
+   (lets ((rs n (rand rs max-block-size)))
+      (values rs (max n 8))))
+
+;; todo: might make sense to grow the initial block size limits as 2^n up to final limit
+;; stream data from port as desired sized blocks (which are deterministic unlike the sizes we happen to read) and close it at eof
+(define (stream-blocks rs port)
+   (lets ((rs first (rand-block-size rs)))
+      (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
+         (let ((block (interact port wanted)))
+            (cond
+               ((eof? block) ;; end of stream
+                  (if (not (eq? port stdin)) (close-port port))
+                  (if last (list last) null))
+               ((not block) ;; read error
+                  ;; later carp via whatever logging system is used to stderr
+                  (if (not (eq? port stdin)) (close-port port))
+                  (if last (list last) null))
+               ((eq? (sizeb block) (+ wanted 1))
+                  ;; a block of required (deterministic) size is ready
+                  (lets
+                     ((block (merge last block))
+                      (rs next (rand-block-size rs)))
+                     (pair block (loop rs F next))))
+               (else
+                  (loop rs (merge last block) (- wanted (sizeb block)))))))))
+
+(define (open-sample-port path)
+   (cond
+      ((equal? path "-") stdin)
+      (else (open-input-file path))))
+
+(define (pop-rand rs)
+   (lets ((digit rs (uncons rs F))) rs))
+
+;; todo: make the first block a special case?
+(define (stream-sample rs path)
+   (let ((port (open-sample-port path)))
+      (if port
+         (stream-blocks rs port) ; <- use also for stdin streaming
+         (error "Failed to read " path))))
+
+;; todo: switch to stream mode if no samples given?
+(define (sample-gen rs paths opts)
+   ;; permute once per round
+   (lets ((rs order (random-permutation rs paths)))
+      (let loop ((rs rs) (order order))
+         (if (null? order)
+            (sample-gen rs paths F) ;; repermute 
+            (pair
+               (cons
+                  (list 'sample (car order)) ;; save sample name to metadata
+                  (λ () (stream-sample rs (car order))))
+               (loop (pop-rand rs) (cdr order)))))))
+
 (define ll-generators
    (list
-      (cons "bs"
-         (λ (rs paths opts)
-            (print "Generator stars started.")
-            (let ((s (string->vec "++++++")))
-               (simple-node "bs"
-                  (map (λ (x) s) (iota 0 1 30))))))
-      (cons "as"
+      (cons "blank"
          (λ (rs paths opts)
             (print "Generator xs started.")
-            (let ((s (string->vec "------")))
+            (let ((s (string->vec "......")))
                (simple-node "xs" 
-                  (map (λ (x) s) (iota 0 1 30))))))))
+                  (map (λ (x) s) (iota 0 1 30))))))
+      (cons "sample" sample-gen)))
 
 ;;; Stream polymerases ------------------------------------------------
 
@@ -319,7 +399,8 @@
             (values rs gens taken)))))
 
 (define (plain-sample? node) 
-   (string? (car node))) ;; todo: not really
+   (and (pair? (car node))
+      (eq? (caar node) 'sample)))
 
 ;; merger many data streams to one using the fuzzers and muxers
 (define (master-merge rs muxs fuzs lls)
@@ -502,3 +583,4 @@
                      (show "error: " msg)
                      rval-crashed)))
             (else rval-crashed))))) ;; some other thread is talking to me. equally bad.
+
