@@ -2,7 +2,6 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: FFUUUU, output stream needs to be muxed differently with data stream, because the output writer may want the metadata
 ;; todo: muxers could return F when can't do anything, so that the meta could be removed
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
@@ -37,9 +36,10 @@
 
 (define (send-stream data port)
    (let ((res (mail-blocks data port 0)))
-      ((if (eq? port stdout) flush-port close-port) port)
+      (flush-port port) ; <- only necessary for stdout, since others are autoflushed on close soon
       res))
 
+;; convert writer stream to have functions that do the whole write 
 (define (writer fds lls record-meta n)
    (let loop ((lls lls) (fds fds) (n n))
       (if (= n 0)
@@ -58,40 +58,46 @@
 (define (record-meta/stderr info len)
    (mail stderr (foldr renderer '(10) (list " → " info ": " len "b"))))
 
+;; todo: pass the meta recorder here
 (define (get-stdout-fd n)
    (pair 
-      (cons
-         (list->string (foldr (λ (x tl) (render render x tl)) null (list "stdout-" n)))
-         stdout)
+      (λ (ll)
+         (let ((w (send-stream (cdr ll) stdout)))
+            (print* (list " - " n " = " (car ll) ": " w))))
       (get-stdout-fd (+ n 1))))
 
 (define (file-writer pat)
    (λ (nth)
-      (define path
-         (runes->string
-            (str-foldr
-               (λ (char tl)
-                  (cond
-                     ((null? tl)
-                        (cons char tl))
-                     ((eq? char 37) ; %
-                        (case (car tl)
-                           ((110) (render render nth (cdr tl))) ; %n
-                           ((102) (render render (get info 'name "anonimasu") (cdr tl))) ; %f
-                           (else (error "Unknown pattern in output path: " (list->string (cons char tl))))))
-                     (else (cons char tl))))
-               null pat)))
-      (define port (open-output-file path))
-      (if port
-         (cons (list 'file path) port)
-         (error "Cannot write to " path))))
+      (λ (node)
+         (lets ((info ll node))
+            (define path
+               (runes->string
+                  (str-foldr
+                     (λ (char tl)
+                        (cond
+                           ((null? tl)
+                              (cons char tl))
+                           ((eq? char 37) ; %
+                              (case (car tl)
+                                 ((110) (render render nth (cdr tl))) ; %n
+                                 ((102) (render render (get info 'name "anonimasu") (cdr tl))) ; %f
+                                 (else (error "Unknown pattern in output path: " (list->string (cons char tl))))))
+                           (else (cons char tl))))
+                     null pat)))
+            (define port 
+               (open-output-file path))
+            (if port
+               (let ((w (send-stream (cdr ll) port)))
+                  (print* (list path " → " info ": " w))
+                  (close-port port))
+               (error "Cannot write to " path))))))
          
 ;; str → ((info . fd) ...) | False
 (define (make-output-stream str)
    (cond
       ((equal? str "-")
          (print " -> giving stdout stream")
-         (get-stdout-fd 0))
+         (get-stdout-fd 1))
       ((/^:[0-9]+$/ str)
          (print "TCP server mode not here yet.")
          False)
@@ -99,7 +105,7 @@
          (print "TCP client mode not here yet.")
          False)
       (else
-         (lmap (file-writer pat) (lnums 1)))))
+         (lmap (file-writer str) (lnums 1)))))
 
 (define command-line-rule-exp
    `((help "-h" "--help")
@@ -553,6 +559,12 @@
                   ((cdr pol) (cdr fuz) a-data)))) ;; <- be lazy
          (fuzzer-stream pols fuzs))))
 
+(define (force-n ll n)
+   (if (> n 0)
+      (lets ((this ll (uncons ll F)))
+         (this)
+         (force-n ll (- n 1)))))
+      
 (define (start-radamsa opts paths)
    (call/cc
       (λ (ret)
@@ -589,10 +601,14 @@
                         (if (get opts 'single F)
                            master-polymerase/single-stream
                            master-polymerase))
-                      (lls (drop (master rs gens muxs fuzs) offset)) ;; <- would be nicer to zip also lls and fds together and fast forward
-                      (fds (drop (get opts 'output F) offset))
-                      (n (get opts 'count F))
-                      (lls fds (writer fds lls record-meta/stderr n)))
+                      (lls (master rs gens muxs fuzs))
+                      (thunks ;; (thunk ...), calling causes io 
+                        (lzip (λ (a b) (λ () (a b)))
+                           (get opts 'output F)
+                           lls))
+                      (thunks (drop thunks (get opts 'offset 0))) ;; fast forward if --seek
+                      (n (get opts 'count F)))
+                     (force-n thunks n)
                      0)))))))
 
 (define (toy-meta)
