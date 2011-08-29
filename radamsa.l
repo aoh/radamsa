@@ -87,7 +87,7 @@
             (define port 
                (open-output-file path))
             (if port
-               (let ((w (send-stream (cdr ll) port)))
+               (let ((w (send-stream ll port)))
                   (print* (list path " → " info ": " w))
                   (close-port port))
                (error "Cannot write to " path))))))
