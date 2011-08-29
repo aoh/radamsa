@@ -398,8 +398,17 @@
                                  (loop rs a as bb bs) ;; more b follows, drop b an continue
                                  (loop rs a as b null)))))))))))) ;; out of b, keep last block
 
+(define (fast-forward ll)
+   (cond
+      ((pair? ll) (fast-forward (cdr ll)))
+      ((null? ll) ll)
+      (else (fast-forward (ll)))))
+
 (define (mux-once rs all bll muxer ip)
-   (mux-step rs all bll muxer ip (λ (a b) a)))
+   (mux-step rs all bll muxer ip 
+      (λ (a b) 
+         (fast-forward b)   ;; read the b stream to be dropped in order to close the fd
+         a)))
 
 (define ll-muxer-polymerase 
    (list
