@@ -589,7 +589,6 @@
                         (if (and (null? paths) (not (get opts 'blank F)))
                            '("-") paths))
                       (rs (seed->rands seed))
-                      (offset (get opts 'seek 0))
                       (rs gens (start rs ll-generators g-pris paths opts))
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
                       (rs pols (start rs ll-polymerase p-pris paths opts))
@@ -606,7 +605,7 @@
                         (lzip (λ (a b) (λ () (a b)))
                            (get opts 'output F)
                            lls))
-                      (thunks (drop thunks (get opts 'offset 0))) ;; fast forward if --seek
+                      (thunks (drop thunks (get opts 'seek 0))) ;; fast forward if --seek
                       (n (get opts 'count F)))
                      (force-n thunks n)
                      0)))))))
