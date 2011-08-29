@@ -39,36 +39,24 @@
       (flush-port port) ; <- only necessary for stdout, since others are autoflushed on close soon
       res))
 
-;; convert writer stream to have functions that do the whole write 
-(define (writer fds lls record-meta n)
-   (let loop ((lls lls) (fds fds) (n n))
-      (if (= n 0)
-         (values lls fds)
-         (lets 
-            ((out fds (uncons fds F))
-             (name fd out) ;; where to write, name = path, ip etc
-             (node lls (uncons lls F)) ;; what to write
-             (info data node))
-            (if (not fd)
-               (error "Failed to write: " name))
-            (let ((written (send-stream data fd)))
-               (record-meta info written)
-               (loop lls fds (- n 1)))))))
-
+;; functions that get metadata about generated data
 (define (record-meta/stderr info len)
    (mail stderr (foldr renderer '(10) (list " → " info ": " len "b"))))
+
+(define (record-meta/not info len) 42)
 
 ;; todo: pass the meta recorder here
 (define (get-stdout-fd n)
    (pair 
-      (λ (ll)
+      (λ (ll record-meta)
          (let ((w (send-stream (cdr ll) stdout)))
-            (print* (list " - " n " = " (car ll) ": " w))))
+            (record-meta (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
+;; todo: parameterize writers to take the meta recorder
 (define (file-writer pat)
    (λ (nth)
-      (λ (node)
+      (λ (node record-meta)
          (lets ((info ll node))
             (define path
                (runes->string
@@ -87,8 +75,8 @@
             (define port 
                (open-output-file path))
             (if port
-               (let ((w (send-stream ll port)))
-                  (print* (list path " → " info ": " w))
+               (let ((written (send-stream ll port)))
+                  (record-meta info written)
                   (close-port port))
                (error "Cannot write to " path))))))
          
@@ -96,7 +84,6 @@
 (define (make-output-stream str)
    (cond
       ((equal? str "-")
-         (print " -> giving stdout stream")
          (get-stdout-fd 1))
       ((/^:[0-9]+$/ str)
          (print "TCP server mode not here yet.")
@@ -116,7 +103,7 @@
      (seed "-s" "--seed" has-arg comment "Random seed (any string). Default random.")
      (fuzzers "-f" "--fuzzers" has-arg default "star" 
          comment "Which stream fuzzers to run? (pass help to list options)")
-     (generators "-g" "--generators" has-arg default "blank" 
+     (generators "-g" "--generators" has-arg default "sample" 
          comment "Which stream generators to run? (pass help to list options)")
      (polymerase "-p" "--polymerase" has-arg default "od" 
          comment "Which stream mutator patterns to use? (pass help to list options)")
@@ -127,6 +114,7 @@
      (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
          comment "Skip start from nth file.")
      (single F "--single" comment "Do not mux")
+     (verbose "-v" "--verbose" comment "Be verbose when running.")
      (blank "-T" "--tabula-rasa" comment "Do not read any sample data.")))
 
 (define command-line-rules
@@ -252,7 +240,6 @@
    (list
       (cons "star"
          (λ (rs paths opts)
-            (print "Fuzzer foo started.")
             (rs-fold-node rs "star" sed-star)))))
 
 (define (string->vec str)
@@ -577,7 +564,6 @@
                   ;; make a time-based seed unless one is given explicitly
                   (start-radamsa (add-seed opts) paths))
                (else
-                  (show "opts: " opts)
                   (lets
                      ((f-pris  (enable-modules (get opts 'fuzzers F) opts paths fail))
                       (g-pris  (enable-modules (get opts 'generators F) opts paths fail))
@@ -585,9 +571,12 @@
                       (m-pris  (enable-modules (get opts 'muxers F) opts paths fail))
                       (mp-pris (enable-modules (get opts 'muxer-polymerase F) opts paths fail))
                       (seed (string->seed (get opts 'seed F)))
+                      (n (get opts 'count F))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (not (get opts 'blank F)))
                            '("-") paths))
+                      (have-stdin? (mem equal? paths "-"))
+                      (_ (if (and have-stdin? (> n 1)) (error "Cannot make more then 1 file when stdin is a sample." paths)))
                       (rs (seed->rands seed))
                       (rs gens (start rs ll-generators g-pris paths opts))
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
@@ -597,16 +586,17 @@
                       (rs mpol (start rs ll-muxer-polymerase mp-pris paths opts))
                       (muxs (muxer-stream mpol muxs)) ;; fuze available muxer polymerase with muxers
                       (master 
-                        (if (get opts 'single F)
+                        (if (or (get opts 'single F) have-stdin?)
                            master-polymerase/single-stream
                            master-polymerase))
                       (lls (master rs gens muxs fuzs))
+                      (record-meta (if (get opts 'verbose F) record-meta/stderr record-meta/not))
                       (thunks ;; (thunk ...), calling causes io 
-                        (lzip (λ (a b) (λ () (a b)))
+                        (lzip (λ (a b) (λ () (a b record-meta)))
                            (get opts 'output F)
                            lls))
                       (thunks (drop thunks (get opts 'seek 0))) ;; fast forward if --seek
-                      (n (get opts 'count F)))
+                      )
                      (force-n thunks n)
                      0)))))))
 
