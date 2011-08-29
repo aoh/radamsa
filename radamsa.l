@@ -2,6 +2,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: muxed streams which are not fully read will not be closed since they don't see the eof
 ;; todo: muxers could return F when can't do anything, so that the meta could be removed
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
@@ -40,17 +41,17 @@
       res))
 
 ;; functions that get metadata about generated data
-(define (record-meta/stderr info len)
-   (mail stderr (foldr renderer '(10) (list " → " info ": " len "b"))))
+(define (record-meta/stderr name info len)
+   (mail stderr (foldr renderer '(10) (list " " name " → " info ": " len "b"))))
 
-(define (record-meta/not info len) 42)
+(define (record-meta/not name info len) 42)
 
 ;; todo: pass the meta recorder here
 (define (get-stdout-fd n)
    (pair 
       (λ (ll record-meta)
          (let ((w (send-stream (cdr ll) stdout)))
-            (record-meta (car ll) w)))
+            (record-meta "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
 ;; todo: parameterize writers to take the meta recorder
@@ -76,7 +77,7 @@
                (open-output-file path))
             (if port
                (let ((written (send-stream ll port)))
-                  (record-meta info written)
+                  (record-meta path info written)
                   (close-port port))
                (error "Cannot write to " path))))))
          
@@ -592,7 +593,7 @@
                       (lls (master rs gens muxs fuzs))
                       (record-meta (if (get opts 'verbose F) record-meta/stderr record-meta/not))
                       (thunks ;; (thunk ...), calling causes io 
-                        (lzip (λ (a b) (λ () (a b record-meta)))
+                        (lzip (λ (a b) (λ () (wait 100) (a b record-meta))) ;; <- wait in order to allow some time to write
                            (get opts 'output F)
                            lls))
                       (thunks (drop thunks (get opts 'seek 0))) ;; fast forward if --seek
