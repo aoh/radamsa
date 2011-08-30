@@ -170,7 +170,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -183,7 +183,8 @@
         (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
             comment "Skip start from nth file.")
         (single F "--single" comment "Use only one data stream per output.")
-        (blank "-T" "--tabula-rasa" comment "Do not read any sample data."))))
+        ;(blank "-T" "--tabula-rasa" comment "Do not read any sample data.")
+        )))
 
 (define command-line-rules
    (cl-rules advanced-cl-opts))
@@ -278,6 +279,66 @@
                (else
                   (lets ((posp _ (fx- pos 1)))
                      (loop posp (cons (refb bvec pos) out)))))))))
+
+;; todo: add zero width joiners, different length leading blank padding bytes etc
+(define funny-unicode
+   (list->tuple
+      (append
+         (list ;; some manual ones
+            (list #xef #xbb #xbf)  ;; the canonical utf8 bom
+            (list #xfe #xff)       ;; utf16 be bom
+            (list #xff #xfe)       ;; utf16 le bom
+            (list 0 0 #xff #xff)   ;; ascii null be
+            (list #xff #xff 0 0)   ;; ascii null le
+            (list 43 47 118 56)    ;; and some others from wikipedia
+            (list 43 47 118 57)
+            (list 43 47 118 43)
+            (list 43 47 118 47)
+            (list 247 100 76)
+            (list 221 115 102 115)
+            (list 14 254 255)
+            (list 251 238 40)
+            (list 251 238 40 255)
+            (list 132 49 149 51))
+         (map ;; some valid points and ranges
+            (λ (codepoint)
+               (render render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
+            (fold
+            (λ (tl node)
+                  (if (pair? node) ;; inclusive range
+                     (append (iota (car node) 1 (+ (cdr node) 1)) tl)
+                     (cons node tl)))
+               null
+               '((#x0009 . #x000d)    ; control chars
+                 #x00a0               ; no-break space
+                 #x1680               ; ogham space mark
+                 #x180e               ; mongolian vowel separater (...)
+                 (#x2000 . #x200a)    ; some spaces
+                 #x2028               ; line separator
+                 #x2029               ; paragraph separator
+                 #x202f               ; narrow no-break space
+                 #x205f               ; medium mathematical space (for small vectors)
+                 #x3000               ; ideographic space
+                 (#x200e . #x200f)    ; bidi stuff
+                 (#x202a . #x202e)    ; more bidi stuff
+                 (#x200c . #x200d)    ; zero width joining
+                 #x0345               ; combining greek yggdrasil
+                 #x00b7               ; extender - middle dot
+                 (#x02d0 . #x02d1)     ; modifiers
+                 #xff70               ; prolonged sound
+                 (#x02b0 . #x02b8)    ; modifier small letters
+                 #xfdd0               ; a non-character
+                 #x034f               ; ignorables
+                 (#x115f . #x1160)    ; hangul ignorables
+                 (#x2065 . #x2069)    ; reserved ignorables
+                 #x3164               ; hangul filler
+                 #xffa0               ; halfwit hangul filler
+                 #xe0001              ; deprecated language tag
+                 (#xe0020 . #xe007f)  ; more deprecated
+                 (#x0e40 . #x0e44)    ; something else
+                 #x1f4a9              ; some unicode shit
+      ))))))
+
 
 ;; a silly fixnum/primitive mess, since this is fairly commonly used
 (define (edit-byte-vector bvec edit-pos fn)
@@ -429,6 +490,16 @@
                (λ (old tl) (ilist old old tl)))
             (cdr ll)))))
 
+;; insert UTF-8 that might be mishandled
+(define (sed-utf8 rs)
+   (λ (ll)
+      (lets
+         ((rs p (rand rs (sizeb (car ll))))
+          (rs bytes (rand-elem rs funny-unicode)))
+         (cons
+            (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl))))
+            (cdr ll)))))
+
 ;; todo: silly boilerplate
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
@@ -457,6 +528,9 @@
       (cons "num"
          (λ (rs paths opts)
             (rs-fold-node rs "num" sed-num)))
+      (cons "utf8"
+         (λ (rs paths opts)
+            (rs-fold-node rs "utf8" sed-utf8)))
 ))
 
 (define (string->vec str)
@@ -839,6 +913,13 @@
          (mail from 'anon)
          (toy-meta))))
 
+(define (boom err-code a b)
+   (print "")
+   (print " *** BOOM *** ")
+   (print "")
+   (print "Radamsa thread aborted due to a serious malfunction. Sorry.")
+   (print (list 'error 'code err-code a b)))
+
 (λ (args)
    (fork-server 'meta toy-meta)
    (fork-linked-server 'radamsa
@@ -853,9 +934,13 @@
                   ((error cont msg reason)
                      (show msg reason)
                      1)
+                  ((crashed err-code a b)
+                     (boom err-code a b)
+                     127)
                   (else 
-                     (print "Abnormal exit")
+                     (show "Abnormal exit: " res)
                      2)))
             (else
                (print "Abnormal condition.")
                3)))))
+
