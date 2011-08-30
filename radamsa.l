@@ -2,7 +2,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: muxed streams which are not fully read will not be closed since they don't see the eof
+;; todo: have a look at mutation distributions on larger files. not sensible yet.
 ;; todo: muxers could return F when can't do anything, so that the meta could be removed
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
 ;; todo: module startup should use (name-of node) instead of a separate string in the list
@@ -22,7 +22,6 @@
    (render render val tl))
 
 (define (car> a b) (> (car a) (car b)))
-
 
 ;; force and send a stream to a port
 (define (mail-blocks str port n)
@@ -171,7 +170,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "star" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,flip,stut" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -297,19 +296,82 @@
                      (lets ((pos _ (fx- pos 1)))
                         (loop pos (cons val out))))))))))
 
-(define (sed-star rs)
+(define (sed-star rs) ;; test fuzzer, replaces a character with *
    (λ (ll)
       (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons
-            (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl)))
+         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl))) (cdr ll)))))
+
+(define (sed-drop rs) ;; droa byte
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons (edit-byte-vector (car ll) p (λ (old tl) tl)) (cdr ll)))))
+
+(define (sed-inc rs) ;; increment a byte mod 256
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll)))))
+
+(define (sed-flip rs) ;; flip a bit
+   (λ (ll)
+      (lets 
+         ((rs p (rand rs (sizeb (car ll))))
+          (rs b (rand rs 8)))
+         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor (<< 1 b) old) tl))) (cdr ll)))))
+
+(define (sed-stut rs) ;; repeat a section
+   (λ (ll)
+      (lets ((n (sizeb (car ll))))
+         (if (< n 4)
+            ll
+            (lets
+               ((rs start (rand-range rs 0 (- n 2)))
+                (rs end (rand-range rs (+ start 1) n))
+                (pre (map (λ (p) (refb (car ll) p)) (iota 0 1 start)))
+                (post (map (λ (p) (refb (car ll) p)) (iota end 1 (sizeb (car ll)))))
+                (stut (list->byte-vector (map (λ (p) (refb (car ll) p)) (iota start 1 end))))
+                (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
+                (stuts
+                  (fold
+                     (λ (tl n) (cons stut tl))
+                     (if (null? post)
+                        (cdr ll)
+                        (cons (list->byte-vector post) (cdr ll)))
+                     (iota 0 1 n))))
+               (if (null? pre)
+                  stuts
+                  (cons (list->byte-vector pre) stuts)))))))
+
+(define (sed-dec rs) ;; decrement a byte mod 256
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons 
+            (edit-byte-vector (car ll) p 
+               (λ (old tl) (if (eq? old 0) 255 (cons (- old 1) tl))))
             (cdr ll)))))
 
+;; todo: silly boilerplate
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
    (list
       (cons "star"
          (λ (rs paths opts)
-            (rs-fold-node rs "star" sed-star)))))
+            (rs-fold-node rs "star" sed-star)))
+      (cons "drop"
+         (λ (rs paths opts)
+            (rs-fold-node rs "drop" sed-drop)))
+      (cons "inc"
+         (λ (rs paths opts)
+            (rs-fold-node rs "inc" sed-inc)))
+      (cons "dec"
+         (λ (rs paths opts)
+            (rs-fold-node rs "dec" sed-dec)))
+      (cons "flip"
+         (λ (rs paths opts)
+            (rs-fold-node rs "flip" sed-flip)))
+      (cons "stut"
+         (λ (rs paths opts)
+            (rs-fold-node rs "stut" sed-stut)))
+))
 
 (define (string->vec str)
    (list->byte-vector (render render str null)))
