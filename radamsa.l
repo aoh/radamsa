@@ -170,7 +170,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,flip,stut,num=4" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -421,6 +421,14 @@
                (λ (old tl) (if (eq? old 0) 255 (cons (- old 1) tl))))
             (cdr ll)))))
 
+(define (sed-dup rs) ;; duplicate a byte
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons 
+            (edit-byte-vector (car ll) p 
+               (λ (old tl) (ilist old old tl)))
+            (cdr ll)))))
+
 ;; todo: silly boilerplate
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
@@ -437,6 +445,9 @@
       (cons "dec"
          (λ (rs paths opts)
             (rs-fold-node rs "dec" sed-dec)))
+      (cons "dup"
+         (λ (rs paths opts)
+            (rs-fold-node rs "dup" sed-dup)))
       (cons "flip"
          (λ (rs paths opts)
             (rs-fold-node rs "flip" sed-flip)))
@@ -733,7 +744,7 @@
                    (nodes (modfn (seed->rands seed) paths opts)))
                   (loop rs (cdr pris) (cons (cons (caar pris) nodes) out)))))
          (else
-            (error "I don't have a module called " (caar pris))))))
+            (error "I don't have a module called " (cdar pris))))))
 
 ;; merge muxer polymerase stream and muxer stream to a stream muxer stream
 (define (muxer-stream pols muxs)
