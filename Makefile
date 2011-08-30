@@ -3,14 +3,13 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O3
 CC=gcc
-#OFLAGS=--usual-suspects
-OFLAGS=--native
+OFLAGS=-O1
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
 you: deps bin/radamsa .seal-of-quality
 
 bin/radamsa: radamsa.c
-	-mkdir bin
+	mkdir -p bin
 	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
 
 bin/radamsa.exe: radamsa.c
@@ -21,14 +20,14 @@ radamsa.c: *.l
 	ol $(OFLAGS) -o radamsa.c radamsa.l
 
 install: bin/radamsa
-	test -d $(DESTDIR)$(PREFIX)/bin || mkdir -p $(DESTDIR)$(PREFIX)/bin
+	-mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp bin/radamsa $(DESTDIR)$(PREFIX)/bin
-	test -d $(DESTDIR)$(PREFIX)/share/man/man1 || mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
+	-mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
 	cat doc/radamsa.1 | gzip -9 > $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz
 
 bytecode:
 	# make a plain bytecode dump, which gcc compiles *much* faster
-	make OFLAGS="" bin/radamsa
+	make OFLAGS="-O0" bin/radamsa
 
 test:
 	test -f .seal-of-quality && rm .seal-of-quality || true
@@ -38,7 +37,7 @@ clean:
 	-rm radamsa.c bin/* .seal-of-quality
 
 .seal-of-quality: bin/radamsa
-	-mkdir tmp
+	-mkdir -p tmp
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
 

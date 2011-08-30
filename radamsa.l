@@ -54,6 +54,30 @@
             (record-meta n "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
+(define (render-ip bvec)
+   (runes->string
+      (foldr
+         (λ (byte tl)
+            (render render byte (if (null? tl) tl (cons 46 tl))))
+         null bvec)))
+
+(define (render-ip-port bvec port)
+   (runes->string
+      (foldr
+         (λ (byte tl)
+            (render render byte (if (null? tl) tl (cons 46 tl))))
+         (cons 58 (render render port null))
+         bvec)))
+
+(define (get-tcp-connection sock)
+   (λ (n)
+      (λ (node record-meta)
+         (let ((cli (interact sock 'accept)))
+            (if cli
+               (let ((sent (send-stream (cdr node) cli)))
+                  (record-meta n (render-ip (ref (interact cli 'info) 2)) (car node) sent))
+               False)))))
+
 ;; todo: parameterize writers to take the meta recorder
 (define (file-writer pat)
    (λ (nth)
@@ -84,21 +108,6 @@
 (define (in-range? min max)
    (λ (x) (and (<= min x) (<= x max))))
 
-(define (render-ip bvec)
-   (runes->string
-      (foldr
-         (λ (byte tl)
-            (render render byte (if (null? tl) tl (cons 46 tl))))
-         null bvec)))
-
-(define (render-ip-port bvec port)
-   (runes->string
-      (foldr
-         (λ (byte tl)
-            (render render byte (if (null? tl) tl (cons 46 tl))))
-         (cons 58 (render render port null))
-         bvec)))
-
 (define (make-tcp-connection ip port)
    (λ (n)
       (λ (node record-meta)
@@ -117,8 +126,17 @@
       ((equal? str "-")
          (get-stdout-fd 1))
       ((/^:[0-9]+$/ str)
-         (print "TCP server mode not here yet.")
-         False)
+         (let ((port (string->integer (s/^:// str))))
+            (if (and port (>= port 0) (< port 65536))
+               (let ((socket (open-socket port)))
+                  (if socket
+                     (lmap (get-tcp-connection socket) (lnums 1))
+                     (begin
+                        (show "Failed to open port " port)
+                        False)))
+               (begin
+                  (show "Bad port " port)
+                  False))))
       ((/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
          (lets
             ((ip-port (c/:/ str)) ;; todo: later these become 2-valued functions
