@@ -170,7 +170,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,flip,stut" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,flip,stut,num=4" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -296,6 +296,78 @@
                      (lets ((pos _ (fx- pos 1)))
                         (loop pos (cons val out))))))))))
 
+(define (digit d)
+   (cond
+      ((lesser? d 48) F)
+      ((lesser? 57 d) F)
+      (else (- d 48))))
+
+; → digit|F tail
+(define (get-num lst)
+   (let loop ((lst lst) (n 0) (digits 0))
+      (cond
+         ((null? lst)
+            (if (eq? digits 0)
+               (values F null)
+               (values n null)))
+         ((digit (car lst)) =>
+            (λ (d) (loop (cdr lst) (+ d (* n 10)) (+ digits 1))))
+         ((eq? digits 0)
+            (values F lst))
+         (else
+            (values n lst)))))
+
+;; copy from pos up to end (not countin it)
+(define (copy-range pos end tail)
+   (if (eq? pos end)
+      tail
+      (cons (car pos) (copy-range (cdr pos) end tail))))
+
+;; fixme: simple placeholder
+(define (mutate-num rs num)
+   (lets ((rs n (rand rs 16)))
+      (cond
+         ((eq? n 0) (values rs (+ n 1)))
+         ((eq? n 1) (values rs (- n 1)))
+         ((eq? n 2) (values rs 0))
+         ((eq? n 3) (values rs 1))
+         ((eq? n 4) (values rs #xff))
+         ((eq? n 5) (values rs #x100))
+         ((eq? n 6) (values rs #xffff))
+         ((eq? n 7) (values rs #x10000))
+         ((eq? n 8) (values rs #xffffffff))
+         ((eq? n 9) (values rs #x100000000))
+         (else
+            (lets
+               ((rs n (rand-range rs 1 129))
+                (rs n (rand-log rs n)))
+               (values rs (+ num n)))))))
+
+(define (mutate-a-num rs lst nfound)
+   (if (null? lst)
+      (lets ((rs which (rand rs nfound)))
+         ;; choose which to mutate (or 0 if none)
+         (values rs which null))
+      (lets ((valp lstp (get-num lst)))
+         (if valp
+            (lets ((rs which tail (mutate-a-num rs lstp (+ nfound 1))))
+               (if (eq? which 0) ;; i won
+                  (lets
+                     ((rs new (mutate-num rs valp))
+                      (new-lst (render render new tail)))
+                     (values rs -1 (render render new tail)))
+                  (values rs (- which 1)
+                     (copy-range lst lstp tail))))
+            (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
+               (values rs which (cons (car lst) tail)))))))
+
+(define (sed-num rs)
+   (λ (ll)
+      (lets
+         ((lst (vec->list (car ll)))
+          (rs n lst (mutate-a-num rs lst 0)))
+         (cons (list->byte-vector lst) (cdr ll)))))
+
 (define (sed-star rs) ;; test fuzzer, replaces a character with *
    (λ (ll)
       (lets ((rs p (rand rs (sizeb (car ll)))))
@@ -371,6 +443,9 @@
       (cons "stut"
          (λ (rs paths opts)
             (rs-fold-node rs "stut" sed-stut)))
+      (cons "num"
+         (λ (rs paths opts)
+            (rs-fold-node rs "num" sed-num)))
 ))
 
 (define (string->vec str)
