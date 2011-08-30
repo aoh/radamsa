@@ -41,17 +41,17 @@
       res))
 
 ;; functions that get metadata about generated data
-(define (record-meta/stderr name info len)
-   (mail stderr (foldr renderer '(10) (list " " name " → " info ": " len "b"))))
+(define (record-meta/stderr n name info len)
+   (mail stderr (foldr renderer '(10) (list " " n ": " name " → " info ": " len "b"))))
 
-(define (record-meta/not name info len) 42)
+(define (record-meta/not n name info len) 42)
 
 ;; todo: pass the meta recorder here
 (define (get-stdout-fd n)
    (pair 
       (λ (ll record-meta)
          (let ((w (send-stream (cdr ll) stdout)))
-            (record-meta "" (car ll) w)))
+            (record-meta n "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
 ;; todo: parameterize writers to take the meta recorder
@@ -77,10 +77,40 @@
                (open-output-file path))
             (if port
                (let ((written (send-stream ll port)))
-                  (record-meta path info written)
+                  (record-meta nth path info written)
                   (close-port port))
                (error "Cannot write to " path))))))
-         
+
+(define (in-range? min max)
+   (λ (x) (and (<= min x) (<= x max))))
+
+(define (render-ip bvec)
+   (runes->string
+      (foldr
+         (λ (byte tl)
+            (render render byte (if (null? tl) tl (cons 46 tl))))
+         null bvec)))
+
+(define (render-ip-port bvec port)
+   (runes->string
+      (foldr
+         (λ (byte tl)
+            (render render byte (if (null? tl) tl (cons 46 tl))))
+         (cons 58 (render render port null))
+         bvec)))
+
+(define (make-tcp-connection ip port)
+   (λ (n)
+      (λ (node record-meta)
+         (let loop ((conn (open-connection ip port))) ;; connect until we succeed
+            (if conn
+               (let ((written (send-stream (cdr node) conn)))
+                  (record-meta n (render-ip-port ip port) (car node) written)
+                  (close-port conn))
+               (begin
+                  (wait 100) ;; fixme: cannot sleep here. why?
+                  (loop (open-connection ip port))))))))
+
 ;; str → ((info . fd) ...) | False
 (define (make-output-stream str)
    (cond
@@ -90,8 +120,19 @@
          (print "TCP server mode not here yet.")
          False)
       ((/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
-         (print "TCP client mode not here yet.")
-         False)
+         (lets
+            ((ip-port (c/:/ str)) ;; todo: later these become 2-valued functions
+             (port (string->integer (cadr ip-port)))
+             (addr (map string->integer (c/\./ (car ip-port)))))
+            (cond
+               ((not (all (in-range? 0 255) addr))
+                  (show "Bad ip address: " addr)
+                  null)
+               ((not ((in-range? 0 65535) port))
+                  (show "Bad port: " port))
+               (else
+                  (lmap (make-tcp-connection (list->vector addr) port)
+                     (lnums 1))))))
       (else
          (lmap (file-writer str) (lnums 1)))))
 
