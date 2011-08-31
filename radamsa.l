@@ -2,6 +2,16 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: remove useless stuff from module startup lists (name now twice)
+;; todo: make a priority adjustment pass and allow it to pass information back
+;; todo: when using stdin as sample an making n>1 files, preread the stdin. useful especially for testing.
+;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
+;; todo: stream fuzzer: permute n bytes
+;; todo: stream fuzzer: cut&fill with probabilities
+;; todo: stream fuzzer: local permu transform
+;; todo: stream fuzzer: local surfy (using lazy or n-level stree)
+;; todo: stream muxer: 2-stream permu
+;; todo: stream muxer: 2-stream surf (lazy stree)
 ;; todo: have a look at mutation distributions on larger files. not sensible yet.
 ;; todo: muxers could return F when can't do anything, so that the meta could be removed
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
@@ -172,13 +182,13 @@
    (append basic-cl-opts
       `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2" 
             comment "Which stream fuzzers to run? (pass help to list options)")
-        (generators "-g" "--generators" has-arg default "sample" 
+        (generators "-g" "--generators" has-arg default "sample=10,flat" 
             comment "Which stream generators to run? (pass help to list options)")
         (polymerase "-p" "--polymerase" has-arg default "od" 
             comment "Which stream mutator patterns to use? (pass help to list options)")
         (muxer-polymerase "-P" "--muxer-polymerase" has-arg default "once" 
             comment "Which muxer mutator patterns to use? (pass help to list options)")
-        (muxers "-m" "--muxers" has-arg default "swap" 
+        (muxers "-m" "--muxers" has-arg default "swap=4,cat" 
             comment "Which stream muxers to use? (pass help to list options)")
         (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
             comment "Skip start from nth file.")
@@ -243,9 +253,10 @@
       ((mods (keep (λ (x) (> (string-length x) 0)) (c/,/ selection))) ;; split
        (pris (map try-split-priority mods))
        (bads (keep string? pris)))
-      (if (null? bads)
-         pris
-         (begin
+      (cond
+         ((null? bads)
+            pris)
+         (else
             (for-each (λ (x) (show "Bad module selection: " x)) bads)
             (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
             (print "For example -e foo,bar,baz=2 will use baz about as often as foo and bar combined.")
@@ -538,7 +549,9 @@
 
 ;;; Stream generators -------------------------------------------------
 
+
 (define avg-block-size 4096)
+
 (define max-block-size (* 2 avg-block-size))
 
 ;; bvec|F bvec → bvec
@@ -604,15 +617,46 @@
                   (λ () (stream-sample rs (car order))))
                (loop (pop-rand rs) (cdr order)))))))
 
+(define (repeat thing n)
+   (let loop ((n n) (out null))
+      (if (eq? n 0)
+         out
+         (loop (- n 1) (cons thing out)))))
+
+(define (repeat-blocks pre n tail)
+   (if (= n 0)
+      (list tail)
+      (pair pre (repeat-blocks pre (- n 1) tail))))
+
+(define (rand-length rs)
+   (lets
+      (
+       ; (rs nbits (rand rs 20)) ;; max 1MB files
+       (rs nbits (rand rs 15))
+       (rs n (rand rs (<< 1 (max nbits 6)))))
+      (values rs n)))
+
+(define (sgen-flat rs paths opts)
+   (let loop ((rs rs))
+      (lets
+         ((rs base (rand rs 256))
+          (rs len (rand-length rs))
+          (blocks (div len avg-block-size)))
+         (pair
+            (cons 
+               (list 'flat base len)
+               (repeat-blocks
+                  (if (> blocks 0)
+                     (list->byte-vector (repeat base avg-block-size))
+                     'nothing)
+                  blocks
+                  (list->byte-vector (repeat base (- len (* blocks avg-block-size))))))
+            (loop rs)))))
+
 (define ll-generators
    (list
-      (cons "blank"
-         (λ (rs paths opts)
-            (print "Generator xs started.")
-            (let ((s (string->vec "......")))
-               (simple-node "xs" 
-                  (map (λ (x) s) (iota 0 1 30))))))
-      (cons "sample" sample-gen)))
+      (cons "sample" sample-gen)
+      (cons "flat" sgen-flat)))
 
 ;;; Stream polymerases ------------------------------------------------
 
@@ -653,7 +697,11 @@
       (cons "swap" ;; Simply swap streams
          (λ (rs paths opts)
             (simple-node "swap"
-               (λ (a b) (values b a)))))))
+               (λ (a b) (values b a)))))
+      (cons "cat" ;; catenate streams
+         (λ (rs paths opts)
+            (simple-node "cat"
+               (λ (a b) (values (lappend a b) null)))))))
 
 ;; mux-step - walk the two lazy streams (whose length we don't know) and apply muxer once 
 ;; at some position, and then pass control to cont. blocks of a are emitted as output and 
@@ -817,6 +865,8 @@
                   ((rs seed (rand rs max-seed))
                    (nodes (modfn (seed->rands seed) paths opts)))
                   (loop rs (cdr pris) (cons (cons (caar pris) nodes) out)))))
+         ((equal? (cdar pris) "help")
+            (error "Options are " (map car mods))) ; <- won't exit with 0 though
          (else
             (error "I don't have a module called " (cdar pris))))))
 
@@ -854,7 +904,21 @@
          (this)
          (force-n ll (- n 1)))))
      
-(define examples "These are not the examples you're looking for yet.")
+(define examples 
+"Typical usage:
+
+   Fuzz file.foo to fuzzed.foo
+      $ cat file.foo | radamsa > fuzzed.foo
+
+   Same but with explicitly given paths
+      $ radamsa -o /tmp/fuzzed.foo file.foo
+
+   Same but make 10 files
+      $ radamsa -n 10 -o /tmp/fuzzed-%n.foo file.foo
+
+   Same but use multiple samples from foo-files/*.foo
+      $ radamsa -n 10 -o /tmp/fuzzed-%n.foo foo-files/*.foo
+")
 
 (define (start-radamsa opts paths)
    (call/cc
@@ -913,12 +977,22 @@
          (mail from 'anon)
          (toy-meta))))
 
+(define bummer 
+   (lets
+      ((s "        ")
+       (a " *    *    *")
+       (n (list->string (list 10)))
+       (b "   *  *  *")
+       (c "* * BOOOM *  *"))
+      (foldr string-append "" (list n n s a n s b n s c n s b n s a n n))))
+
 (define (boom err-code a b)
-   (print "")
-   (print " *** BOOM *** ")
-   (print "")
-   (print "Radamsa thread aborted due to a serious malfunction. Sorry.")
-   (print (list 'error 'code err-code a b)))
+   (print bummer)
+   (print "Radamsa stopped because something bad was about to happen. Sorry.")
+   (print "Please file an issue at http://code.google.com/p/ouspg/issues/entry")
+   (print "or send mail to aki.helin@ee.oulu.fi to get this fixed. Adding the")
+   (print "following text and insructions to reproduce this will help.")
+   (show "Error: " (list err-code 'a a 'b b)))
 
 (λ (args)
    (fork-server 'meta toy-meta)
