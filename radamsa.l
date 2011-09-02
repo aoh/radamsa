@@ -121,14 +121,17 @@
 (define (make-tcp-connection ip port)
    (λ (n)
       (λ (node record-meta)
-         (let loop ((conn (open-connection ip port))) ;; connect until we succeed
-            (if conn
-               (let ((written (send-stream (cdr node) conn)))
-                  (record-meta n (render-ip-port ip port) (car node) written)
-                  (close-port conn))
-               (begin
-                  (wait 100) ;; fixme: cannot sleep here. why?
-                  (loop (open-connection ip port))))))))
+         (let loop ()
+            (let ((try (tcp-send ip port (cdr node))))
+               (cond
+                  ((eq? try 'cannot-connect) ;; other end not ready to receive connection
+                     (wait 100) ;; other end 
+                     (loop))
+                  ((number? try) ;; sent this many bytes
+                     (record-meta n (render-ip-port ip port) (car node) try))
+                  (else
+                     ;; write error (remote likely hung up)
+                     (record-meta n (render-ip-port ip port) (car node) False))))))))
 
 (define (serve-node numbered)
    (λ (node record-meta)
@@ -815,10 +818,10 @@
                   ((rs seed (rand rs max-seed))
                    (nodes (modfn (seed->rands seed) paths opts)))
                   (loop rs (cdr pris) (cons (cons (caar pris) nodes) out)))))
-         ((equal? (cdar pris) "help")
-            (error "Options are " (map car mods))) ; <- won't exit with 0 though
          (else
-            (error "I don't have a module called " (cdar pris))))))
+            (if (not (equal? (cdar pris) "help"))
+               (show "I don't have a module called " (cdar pris))) 
+            (error "Valid options are " (map car mods))))))
 
 ;; merge muxer polymerase stream and muxer stream to a stream muxer stream
 (define (muxer-stream pols muxs)
