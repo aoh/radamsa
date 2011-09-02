@@ -7,12 +7,14 @@ fail() {
    exit 1
 }
 
-for round in $(seq 1 1 20)
+echo -n "("
+for round in $(ol -e '(iota 0 1 20)')
 do
-   echo -n " o"
+   echo -n "-"
    SEED=$RANDOM # bashism
-   FIRST=`$@ -n $NFILES -o - -s $SEED *.* | md5sum`
-   SECOND=`$@ -n $NFILES -o - -s $SEED *.* | md5sum`
+   FIRST=`$@ -n $NFILES -o - -s $SEED *.l | md5sum`
+   SECOND=`$@ -n $NFILES -o - -s $SEED *.l | md5sum`
 
    test "$FIRST" = "$SECOND" || fail "sums differ $FIRST $SECOND seed $SEED"
 done
+echo -n ")"

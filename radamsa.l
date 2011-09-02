@@ -2,6 +2,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: unit test - output with a seed to stdout, as tcp client and server, and compare the contents
 ;; todo: maybe should bypass thread-based io to further improve writing speed (and detect errors earlier)
 ;; todo: remove useless stuff from module startup lists (name now twice)
 ;; todo: make a priority adjustment pass and allow it to pass information back
@@ -86,23 +87,6 @@
          (cons 58 (render render port null))
          bvec)))
 
-(define (get-tcp-connection sock)
-   (λ (n)
-      (λ (node record-meta)
-         (lets
-            ((cli (interact sock 'accept))
-             (info (interact cli 'info)))
-            (show "<- "info)
-            (if cli
-               (let ((sent (send-stream (cdr node) cli)))
-                  (print "sent")
-                  (record-meta n (render-ip (ref info 2)) (car node) sent)
-                  (show "-> closing " info)
-                  (close-port cli)
-                  (print " - done, waiting")
-                  (wait 10)
-                  (print " - waited"))
-               False)))))
 
 ;; todo: parameterize writers to take the meta recorder
 (define (file-writer pat)
@@ -146,6 +130,17 @@
                   (wait 100) ;; fixme: cannot sleep here. why?
                   (loop (open-connection ip port))))))))
 
+(define (serve-node numbered)
+   (λ (node record-meta)
+      ;; todo: do a few unblocking reads because the client might block until a request is received
+      (lets 
+         ((nth cli numbered)
+          (ip fd cli))
+         (lets 
+            ((ip fd cli)
+             (np (blocks->fd (cdr node) fd))) ; <- closes fd
+            (record-meta nth (render-ip ip) (car node) np)))))
+
 ;; str → ((info . fd) ...) | False
 (define (make-output-stream str)
    (cond
@@ -154,12 +149,10 @@
       ((/^:[0-9]+$/ str)
          (let ((port (string->integer (s/^:// str))))
             (if (and port (>= port 0) (< port 65536))
-               (let ((socket (open-socket port)))
-                  (if socket
-                     (lmap (get-tcp-connection socket) (lnums 1))
-                     (begin
-                        (show "Failed to open port " port)
-                        False)))
+               (let ((clis (tcp-clients port)))
+                  (if clis
+                     (lmap serve-node (lzip cons (lnums 1) clis))
+                     False))
                (begin
                   (show "Bad port " port)
                   False))))
