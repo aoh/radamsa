@@ -44,7 +44,7 @@ clean:
 todo:
 	ol -n *.l
 
-owltime:
+get-owl:
 	# need to install owl to be able to compile radamsa
 	# this may take a moment depending on your machine
 	git clone http://haltp.org/git/owl-lisp.git
@@ -52,10 +52,10 @@ owltime:
 
 deps:
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
-	which ol || make owltime
+	which ol || make get-owl
 
 uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/radamsa || echo "no radamsa"
 	rm $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz || echo "no manpage"
 
-.PHONY: todo you install clean test bytecode uninstall
+.PHONY: todo you install clean test bytecode uninstall get-owl
