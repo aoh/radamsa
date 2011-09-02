@@ -17,4 +17,4 @@ do
 
    test "$FIRST" = "$SECOND" || fail "sums differ $FIRST $SECOND seed $SEED"
 done
-echo -n ")"
+echo -n ") "

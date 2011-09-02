@@ -21,4 +21,4 @@ do
    rm tmp/test-*-$$-*
 done
 
-echo -n ")"
+echo -n ") "
