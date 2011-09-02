@@ -2,6 +2,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; FIXME: crash module node is now wrong
 ;; todo: unit test - output with a seed to stdout, as tcp client and server, and compare the contents
 ;; todo: maybe should bypass thread-based io to further improve writing speed (and detect errors earlier)
 ;; todo: remove useless stuff from module startup lists (name now twice)
@@ -86,7 +87,6 @@
             (render render byte (if (null? tl) tl (cons 46 tl))))
          (cons 58 (render render port null))
          bvec)))
-
 
 ;; todo: parameterize writers to take the meta recorder
 (define (file-writer pat)
@@ -507,7 +507,7 @@
       (rs-fold-node "stut" sed-stut)
       (rs-fold-node "num" sed-num)
       (rs-fold-node "utf8" sed-utf8)
-      (simple-node "crash" (λ (ll) (car 'electric-fence)))))
+      (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
    (list->byte-vector (render render str null)))
