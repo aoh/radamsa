@@ -44,9 +44,15 @@ clean:
 todo:
 	ol -n *.l
 
+owltime:
+	# need to install owl to be able to compile radamsa
+	# this may take a moment depending on your machine
+	git clone http://haltp.org/git/owl-lisp.git
+	cd owl-lisp && make && sudo make install
+
 deps:
-	which ol || { echo "you need to git clone http://haltp.org/git/owl-lisp.git && cd owl-lisp && make && sudo make install"; false; }
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
+	which ol || make owltime
 
 uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/radamsa || echo "no radamsa"
