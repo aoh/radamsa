@@ -1,9 +1,14 @@
 #!/bin/bash
 
+# TODO: one would think runa > foo; runb >> foo; runc >> foo works when 
+# making the files separately, but apparently it doesn't. examine later!
+
 fail() {
    echo "ERROR - " $@
    exit 1
 }
+
+SAMPLES=*.l
 
 test -d tmp || mkdir tmp
 
@@ -12,13 +17,13 @@ for round in $(ol -e "(iota 0 1 10)")
 do
    echo -n "-"
    SEED=$RANDOM # bashism
-   $@ -n 20 -o tmp/test-1-$$-%n -s $SEED *.l  # make 1-20, or 20 after --seek 0
-   $@ -n 10 -o tmp/test-2-$$-%n -s $SEED *.l  # make 1-10
-   $@ -n 10 --seek 10 -o tmp/test-2-$$-%n -s $SEED *.l # make 11-20 (10 after 10)
-   FIRST=`cat tmp/test-1-$$-* | md5sum`
-   SECOND=`cat tmp/test-2-$$-* | md5sum`
-   test "$FIRST" = "$SECOND" || fail "sums differ $FIRST $SECOND seed $SEED"
-   rm tmp/test-*-$$-*
+   $@ -n 3 -s $SEED $SAMPLES > tmp/abc # make 3 at once
+   $@ -S 0 -s $SEED $SAMPLES > tmp/a # make 1 at offset 0
+   $@ -S 1 -s $SEED $SAMPLES > tmp/b # make 1 at offset 1
+   $@ -S 2 -s $SEED $SAMPLES > tmp/c # make 1 at offset 2
+   cat tmp/a tmp/b tmp/c > tmp/all
+   diff -q tmp/abc tmp/all || fail "FILES DIFFER: tmp/ab tmp/both for seed $SEED"
+   rm tmp/abc tmp/all tmp/[abc]
 done
 
 echo -n ") "

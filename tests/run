@@ -9,8 +9,8 @@ fail() {
 
 for file in tests/*.sh
 do 
-   echo -n " o $file:"
+   echo -n " o $file: "
    $file $@ || { echo "ERROR"; fail "test $file fails"; }
-   echo " ok"
+   echo "ok"
 done
 
