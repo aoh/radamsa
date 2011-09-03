@@ -7,7 +7,7 @@ fail() {
 
 mkdir -p tmp
 
-NFILES=100
+NFILES=10
 SEED=$RANDOM
 
 $@ -o - --seed $SEED -n $NFILES *.l > tmp/stdout-$$
