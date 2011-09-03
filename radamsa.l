@@ -202,7 +202,7 @@
             comment "Which muxer mutator patterns to use? (pass help to list options)")
         (muxers "-m" "--muxers" has-arg default "swap=4,cat" 
             comment "Which stream muxers to use? (pass help to list options)")
-        (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (> x 0))
+        (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip start from nth file.")
         (single F "--single" comment "Use only one data stream per output.")
         ;(blank "-T" "--tabula-rasa" comment "Do not read any sample data.")
