@@ -7,7 +7,7 @@ fail() {
 
 mkdir -p tmp
 
-NFILES=70
+NFILES=100
 SEED=$RANDOM
 
 $@ -o - --seed $SEED -n $NFILES *.l > tmp/stdout-$$
@@ -22,11 +22,32 @@ echo -n "" > tmp/tcp-$$
 
 echo -n "("
 
-for foo in $(ol -e "(iota 0 1 $NFILES)")
-do
-   echo -n "-"
-   nc -l -p 31337 >> tmp/tcp-$$
-done
+#for foo in $(ol -e "(iota 0 1 $NFILES)")
+#do
+#   echo -n "-"
+#   nc -l -p 31337 >> tmp/tcp-$$
+#done
+
+echo "
+(define (stderr-data fd)
+   (let ((block (interact fd 'input)))
+      (if (and block (not (eof? block)))
+         (begin
+            (mail stderr block)
+            (stderr-data fd)))))
+(define sock (open-socket 31337))
+(let loop ((n 0))
+   (if (< n $NFILES)
+      (let ((fd (interact sock 'accept)))
+         (if fd
+            (begin
+               (mail stdout 45)
+               (flush-port stdout)
+               (stderr-data fd)
+               (loop (+ n 1)))
+            (loop n)))))
+" | ol -q 2> tmp/tcp-$$
+
 
 diff -q tmp/stdout-$$ tmp/tcp-$$ || fail "tcp server output differs from stdout output"
 
