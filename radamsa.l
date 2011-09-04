@@ -2,11 +2,8 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: unit test - output with a seed to stdout, as tcp client and server, and compare the contents
-;; todo: maybe should bypass thread-based io to further improve writing speed (and detect errors earlier)
-;; todo: remove useless stuff from module startup lists (name now twice)
+;; todo: mutations that fail to make changes should 
 ;; todo: make a priority adjustment pass and allow it to pass information back
-;; todo: when using stdin as sample an making n>1 files, preread the stdin. useful especially for testing.
 ;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
 ;; todo: stream fuzzer: permute n bytes
 ;; todo: stream fuzzer: cut&fill with probabilities
@@ -568,18 +565,36 @@
             (mail stderr (foldr renderer '(10) (list "Cannot read '" path "' - acting as if it were blank.")))
             null))))
 
-;; todo: switch to stream mode if no samples given?
+(define (preread-stdin rs)
+   (force (stream-blocks rs stdin)))
+
+;; if n>1 outputs requested and stdin is a sample, preread all of it to memory
+(define (maybe-preread-stdin rs paths opts)
+   (if (> (get opts 'count F) 1)
+      (let ((files (remove (λ (x) (equal? x "-")) paths))) ;; remove all "-"s (there could be many)
+         (if (= (length files) (length paths)) 
+            files ;; there are no -:s
+            (cons (cons "standard-input" (preread-stdin rs)) files)))
+      paths))
+
 (define (sample-gen rs paths opts)
    ;; permute once per round
-   (lets ((rs order (random-permutation rs paths)))
+   (lets
+      ((paths (maybe-preread-stdin rs paths opts))
+       (rs order (random-permutation rs paths)))
       (let loop ((rs rs) (order order))
-         (if (null? order)
-            (sample-gen rs paths F) ;; repermute 
-            (pair
-               (cons
-                  (list 'sample (car order)) ;; save sample name to metadata
-                  (λ () (stream-sample rs (car order))))
-               (loop (pop-rand rs) (cdr order)))))))
+         (cond
+            ((null? order)
+               (sample-gen rs paths F)) ;; repermute 
+            ((string? (car order)) ;; a path
+               (pair
+                  (cons
+                     (list 'sample (car order)) ;; save sample name to metadata
+                     (λ () (stream-sample rs (car order))))
+                  (loop (pop-rand rs) (cdr order))))
+            (else ;; preread data (when stdin w/ n>1 outputs)
+               (pair (car order)
+                  (loop rs (cdr order))))))))
 
 (define (repeat thing n)
    (let loop ((n n) (out null))
@@ -922,8 +937,6 @@
                            '("-") paths))
                       ;; todo: map sample source generator to samples
                       (have-stdin? (mem equal? paths "-"))
-                      ;; todo: preread stdin instead and keep in memory
-                      (_ (if (and have-stdin? (> n 1)) (error "Cannot make more then 1 file when stdin is a sample yet: " paths)))
                       (rs (seed->rands seed))
                       (rs gens (start rs ll-generators g-pris paths opts))
                       (rs fuzs (start rs ll-fuzzers f-pris paths opts))
