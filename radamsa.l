@@ -190,7 +190,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2,perm=2" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=20,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -485,6 +485,21 @@
                (λ (old tl) (ilist old old tl)))
             (cdr ll)))))
 
+(define (sed-perm rs) ;; permute a few bytes
+   (λ (ll)
+      (lets ((rs p (rand rs (sizeb (car ll)))))
+         (cons 
+            (edit-byte-vector (car ll) p 
+               (λ (old tl) 
+                  (lets 
+                     ((lst (cons old tl))
+                      (rs n (rand-range rs 2 20))
+                      (head (take lst n))
+                      (tail (drop lst n))
+                      (rs head (random-permutation rs head)))
+                     (append head tail))))
+            (cdr ll)))))
+
 ;; insert UTF-8 that might be mishandled
 (define (sed-utf8 rs)
    (λ (ll)
@@ -508,6 +523,7 @@
       (rs-fold-node "stut" sed-stut)
       (rs-fold-node "num" sed-num)
       (rs-fold-node "utf8" sed-utf8)
+      (rs-fold-node "perm" sed-perm)
       (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
