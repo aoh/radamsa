@@ -2,10 +2,12 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; BUG: long seeks fail, possibly because opened streams cause fd leak
+;; todo: utf8 leading blank
 ;; todo: mutations that fail to make changes should 
 ;; todo: make a priority adjustment pass and allow it to pass information back
+;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
-;; todo: stream fuzzer: permute n bytes
 ;; todo: stream fuzzer: cut&fill with probabilities
 ;; todo: stream fuzzer: local permu transform
 ;; todo: stream fuzzer: local surfy (using lazy or n-level stree)
@@ -190,7 +192,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2,perm=2" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,utf8=2,perm=2,surf=4" 
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=20,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -202,9 +204,7 @@
             comment "Which stream muxers to use? (pass help to list options)")
         (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip start from nth file.")
-        (single F "--single" comment "Use only one data stream per output.")
-        ;(blank "-T" "--tabula-rasa" comment "Do not read any sample data.")
-        )))
+        (single F "--single" comment "Use only one data stream per output."))))
 
 (define command-line-rules
    (cl-rules advanced-cl-opts))
@@ -446,6 +446,104 @@
           (rs b (rand rs 8)))
          (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor (<< 1 b) old) tl))) (cdr ll)))))
 
+;;; sed-surf utils
+
+(define (match-prefix lst p)
+   (cond
+      ((null? p) True)
+      ((null? lst) False)
+      ((eq? (car lst) (car p))
+         (match-prefix (cdr lst) (cdr p)))
+      (else False)))
+
+(define (occurrences lst pat)
+   (let loop ((lst lst) (found null) (pos 0))
+      (cond
+         ((null? lst) found)
+         ((match-prefix lst pat)
+            (loop (cdr lst) (cons pos found) (+ pos 1)))
+         (else
+            (loop (cdr lst) found (+ pos 1))))))
+
+(define (add-suffix ff ls)
+   (if (null? ls)
+      ff
+      (lets ((x ls ls))
+         (put ff x
+            (cons ls (get ff x null))))))
+
+(define (note-substring occurrences rbytes others)
+   (let ((score (* (- occurrences 1) (* (- (length rbytes) 1) 2))))
+      (if (< score 1)
+         others
+         (cons (cons score rbytes) others))))
+
+;; → ((score reverse-bytes ..) ...)
+(define (radix-walk lsts path n found)
+   (cond
+      ((null? lsts) found)
+      ((null? (cdr lsts)) found)
+      ((eq? n 0) found)
+      (else
+         (ff-fold
+            (λ (found char tails)
+               (radix-walk tails (cons char path) (- n 1)
+                  (note-substring (length tails) (cons char path) found)))
+            found
+            (fold add-suffix False lsts)))))
+
+;; list of list suffixes
+(define (suffixen lst)
+   (if (null? lst)
+      null
+      (cons lst (suffixen (cdr lst)))))
+
+(define (car> a b) (> (car a) (car b)))
+
+;; ((i . x) (j . z) ...) n → z
+(define (priority-pick l n)
+   (let ((m (caar l)))
+      (if (<= n m)
+         (cdar l)
+         (priority-pick (cdr l) (- n m)))))
+
+(define (frequent-substring rs lst)
+   (lets
+      ((rs max-depth (rand-range rs 4 100))
+       (subs (radix-walk (suffixen lst) null max-depth null))
+       (subs (sort car> subs))
+       (rs n (rand rs (fold + 0 (map car subs)))))
+      (if (null? subs) ;; <- blank → null
+         (values rs null)
+         (values rs (reverse (priority-pick subs n))))))
+
+;; poss quaranteed to have >= 2 elems
+(define (choose-jump rs poss len)
+   (lets
+      ((rs poss (random-permutation rs poss))
+       (from (car poss))
+       (to (cadr poss)))
+      (if (= (+ from len) (- to 1)) ;; wouldn't change the data
+         (values to from)
+         (values from to))))
+
+(define (sed-surf rs) ;; jump between two share suffixes in the block
+   (λ (ll)
+      (lets
+         ((lst (byte-vector->list (car ll)))
+          (rs root (frequent-substring rs lst))
+          (poss (occurrences lst root))
+          (from to (choose-jump rs poss (length root))))
+         ;(show "SURF: jumping " (list 'from from 'to to 'using root))
+         (if (> (length poss) 1)
+            (lets 
+               ((block (car ll))
+                (get (λ (p) (refb block p)))
+                (pre (list->byte-vector (map get (iota 0 1 from))))
+                (post (list->byte-vector (map get (iota to 1 (sizeb block))))))
+               (ilist pre post (cdr ll)))
+            ll))))
+
 (define (sed-stut rs) ;; repeat a section
    (λ (ll)
       (lets ((n (sizeb (car ll))))
@@ -524,6 +622,7 @@
       (rs-fold-node "num" sed-num)
       (rs-fold-node "utf8" sed-utf8)
       (rs-fold-node "perm" sed-perm)
+      (rs-fold-node "surf" sed-surf)
       (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
@@ -703,7 +802,7 @@
 
 (define ll-muxers ;; todo: many to be added in 0.2.1
    (list
-      (cons "swap" ;; Simply swap streams
+      (cons "swap" ;; swap streams
          (λ (rs paths opts)
             (simple-node "swap"
                (λ (a b) (values b a)))))
