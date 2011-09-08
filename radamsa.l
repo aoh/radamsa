@@ -532,12 +532,13 @@
       (lets
          ((lst (byte-vector->list (car ll)))
           (rs root (frequent-substring rs lst))
-          (poss (occurrences lst root))
-          (from to (choose-jump rs poss (length root))))
+          (poss (occurrences lst root)))
+         ;; a jump list of one element is constructed for blocks with just one byte
          ;(show "SURF: jumping " (list 'from from 'to to 'using root))
          (if (> (length poss) 1)
             (lets 
-               ((block (car ll))
+               ((from to (choose-jump rs poss (length root)))
+                (block (car ll))
                 (get (λ (p) (refb block p)))
                 (pre (list->byte-vector (map get (iota 0 1 from))))
                 (post (list->byte-vector (map get (iota to 1 (sizeb block))))))
