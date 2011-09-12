@@ -1,9 +1,9 @@
+#!/usr/bin/ol --run
+
 ;;;
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: narrow surf seek, because it is by far the slowest mutation currently
-;; todo: mutations that fail to make changes should 
 ;; todo: make a priority adjustment pass and allow it to pass information back
 ;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
@@ -14,6 +14,7 @@
 ;; todo: stream muxer: 2-stream permu
 ;; todo: stream muxer: 2-stream surf (lazy stree)
 ;; todo: stream muxer: loops 0/2/n
+;; todo: local grafu
 ;; todo: add something like --usual-suspects, --everything, --fast etc preselections
 ;; todo: ref preselections, add proper support for them to lib-args
 ;; todo: have a look at mutation distributions on larger files. not sensible yet!
@@ -57,9 +58,6 @@
 (define rval-failed-to-start-modules 1)
 (define rval-crashed 127) ;; in-owl thread crash after detecting an error
 
-(define (renderer val tl)
-   (render render val tl))
-
 (define (car> a b) (> (car a) (car b)))
 
 (define (pop-rand rs)
@@ -78,10 +76,13 @@
       ((null? str) n)
       (else (mail-blocks (str) port n))))
 
+;; ll port → ok? n-written, temporarily always ok
 (define (send-stream data port)
    (let ((res (mail-blocks data port 0)))
       (flush-port port) ; <- only necessary for stdout, since others are autoflushed on close soon
-      res))
+      (if res
+         (values True res)
+         (values False False))))
 
 ;; functions that get metadata about generated data
 (define (record-meta/stderr n name info len)
@@ -93,7 +94,7 @@
 (define (get-stdout-fd n)
    (pair 
       (λ (ll record-meta)
-         (let ((w (send-stream (cdr ll) stdout)))
+         (lets ((ok? w (send-stream (cdr ll) stdout)))
             (record-meta n "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
@@ -135,8 +136,10 @@
                (open-output-file path))
             ;(record-meta nth path info "to-be-written") ;; <- when testing new crash-prone ones
             (if port
-               (let ((written (send-stream ll port)))
-                  (record-meta nth path info written)
+               (lets ((ok? written (send-stream ll port)))
+                  (if ok?
+                     (record-meta nth path info written)
+                     (record-meta nth path info False))
                   (close-port port))
                (error "Cannot write to " path))))))
 
@@ -147,16 +150,23 @@
    (λ (n)
       (λ (node record-meta)
          (let loop ()
-            (let ((try (tcp-send ip port (cdr node))))
+            (lets ((status wrote (tcp-send ip port (cdr node))))
                (cond
-                  ((eq? try 'cannot-connect) ;; other end not ready to receive connection
-                     (wait 100) ;; other end 
+                  ((eq? status 'ok)
+                     (record-meta n (render-ip-port ip port) (car node) wrote))
+                  ((eq? status 'connect-error) ;; other end not ready to receive connection
+                     (wait 100)
                      (loop))
-                  ((number? try) ;; sent this many bytes
-                     (record-meta n (render-ip-port ip port) (car node) try))
+                  ((and (eq? n 0) (eq? status 'write-error))
+                     ;; hung up before accepting any data. retry.
+                     ;; added to avoid a weird 'connection reset by peer' happening in unit tests.
+                     (loop))
                   (else
-                     ;; write error (remote likely hung up)
-                     (record-meta n (render-ip-port ip port) (car node) False))))))))
+                     ;; write error byt we did write something
+                     (show "WRITE ERROR AFTER " wrote)
+                     (record-meta n (render-ip-port ip port) (car node) 
+                        status ;; <- could say "disconnected after n"
+                        ))))))))
 
 (define (serve-node numbered)
    (λ (node record-meta)
@@ -166,7 +176,7 @@
           (ip fd cli))
          (lets 
             ((ip fd cli)
-             (np (blocks->fd (cdr node) fd))) ; <- closes fd
+             (ok? np (blocks->fd (cdr node) fd))) ; <- closes fd
             (record-meta nth (render-ip ip) (car node) np)))))
 
 ;; str → ((info . fd) ...) | False
