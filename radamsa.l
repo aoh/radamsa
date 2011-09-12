@@ -2,6 +2,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: narrow surf seek, because it is by far the slowest mutation currently
 ;; todo: mutations that fail to make changes should 
 ;; todo: make a priority adjustment pass and allow it to pass information back
 ;; todo: use -g all,sample=0 to disable sample generator?
@@ -13,6 +14,8 @@
 ;; todo: stream muxer: 2-stream permu
 ;; todo: stream muxer: 2-stream surf (lazy stree)
 ;; todo: stream muxer: loops 0/2/n
+;; todo: add something like --usual-suspects, --everything, --fast etc preselections
+;; todo: ref preselections, add proper support for them to lib-args
 ;; todo: have a look at mutation distributions on larger files. not sensible yet!
 ;; todo: muxers could return F when can't do anything, so that the meta could be removed
 ;; todo: node infos should be ffs of static values like name, description etc to allow something like $ radamsa --list-modules
@@ -24,6 +27,30 @@
 (define avg-block-size 4096)
 
 (import lib-args)
+
+;; benchmarking & debugging utils
+
+(define (renderer ob tl) 
+   (render render ob tl))
+
+(define (timed-thunk msg thunk)
+   (lets
+      ((pre (time-ms))
+       (res (thunk))
+       (elapsed (- (time-ms) pre)))
+      (mail stderr
+         (foldr renderer '(10) 
+            (list "BENCH: " msg ": " elapsed "ms")))
+      res))
+
+(define-syntax timed-not ;; output timings to stderr
+   (syntax-rules ()
+      ((timed comment code)
+         (timed-thunk comment (λ () code)))))
+
+(define-syntax timed ;; kill the extra code
+   (syntax-rules ()
+      ((timed-not comment code) code)))
 
 ;; todo: stream muxer: cat a b → a ++ b, seen some bugs that needed this
 
@@ -190,7 +217,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed" 
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed"
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -446,15 +473,104 @@
 
 ;;; sed-tree-* utils
 
-;; lst → (ff of key → n)
-(define (freqs lst)
-   (let loop ((lst lst) (ff False))
+(define usual-delims ; <- could be settable from command line
+   (list->ff
+      '((40 . 41)    ; ()
+        (91 . 93)    ; []
+        (60 . 62)    ; <>
+        (123 . 125)  ; {}
+        (34 . 34)    ; ""
+        (39 . 39)))) ; ''
+      
+(define (grow lst close rout)
+   (if (null? lst)
+      (values (reverse rout) False) ;; out of data, didn't find close. return partial parse.
+      (lets ((hd lst lst))
+         (cond
+            ((eq? hd close)
+               ;; match complete, return with rest of list
+               (values (reverse (cons close rout)) lst))
+            ((get usual-delims hd F) =>
+               (λ (next-close)
+                  (lets ((this lst (grow lst next-close (list hd))))
+                     (if lst ;; we didn't run out of data and this is a single tree node
+                        (grow lst close (cons this rout))
+                        ;; we ran out of data. this is a list of partial parses (having the data of 
+                        ;; lst after hd in some form) which we want to preserve as tail
+                        (values (cons hd this) False)))))
+            (else ;; add one byte to this node
+               (grow lst close (cons hd rout)))))))
+
+;; count how many list nodes are in a tree structure
+(define (count-nodes lst)
+   (let loop ((lst lst) (n 0))
+      (cond
+         ((null? lst) n)
+         ((pair? (car lst))
+            (loop (cdr lst)
+               (loop (car lst) (+ n 1))))
+         (else
+            (loop (cdr lst) n)))))
+
+;; lst → a list of lists (not counting tails) in lst, when walked recursively, not counting lst itself
+(define (sublists lst)
+   (let loop ((lst lst) (found null))
+      (if (null? lst) 
+         found
+         (let ((hd (car lst)))
+            (if (pair? hd)
+               (loop (cdr lst) 
+                  (loop hd (cons hd found)))
+               (loop (cdr lst) found))))))
+
+(define (pick-sublist rs lst)
+   (let ((subs (sublists lst)))
+      (if (null? subs)
+         (values rs False)
+         (lets ((rs n (rand rs (length subs))))
+            (values rs (lref subs n))))))
+
+;; replace the node (sub . tail) with (op rs (sub . tail))
+(define (edit-sublist lst sub op)
+   (if (pair? lst)
+      (if (eq? (car lst) sub)
+         (op lst)
+         (cons (edit-sublist (car lst) sub op)
+               (edit-sublist (cdr lst) sub op)))
+      lst))
+
+;; todo: define reservoir-sampling-style node selection (1, 2 or n nodes)
+;; todo: pass 1, partial parse, pass 2, choose nodes, pass3, search and replace by id
+(define (partial-parse lst)
+   (let loop ((lst lst) (rout null))
       (if (null? lst)
-         ff
-         (let ((old (get ff (car lst) F)))
-            (if old
-               (loop (cdr lst) (fupd ff (car lst) (+ old 1)))
-               (loop (cdr lst) (put ff (car lst) 1)))))))
+         (reverse rout)
+         (lets ((closep (get usual-delims (car lst) F)))
+            (if closep
+               (lets ((this lst (grow (cdr lst) closep (list (car lst)))))
+                  (if lst
+                     (loop lst (cons this rout))
+                     (append (reverse rout) this)))
+               (loop (cdr lst) (cons (car lst) rout)))))))
+
+(define (flatten node tl)
+   (cond
+      ((null? node) tl)
+      ((pair? node) (flatten (car node) (flatten (cdr node) tl)))
+      (else (cons node tl))))
+
+(define (sed-tree-op op)
+   (λ (rs)
+      (λ (ll)
+         (lets
+            ((lst (partial-parse (byte-vector->list (car ll))))
+             (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
+             (lst (edit-sublist lst sub op)))
+            (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
+
+(define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
+
+(define sed-tdel (sed-tree-op (λ (node) (cdr node))))
 
 
 ;;; sed-surf utils
@@ -518,11 +634,12 @@
          (cdar l)
          (priority-pick (cdr l) (- n m)))))
 
+;; todo: make surf max jump size a command line flag
 (define (frequent-substring rs lst)
    (lets
-      ((rs max-depth (rand-range rs 4 100))
-       (subs (radix-walk (suffixen lst) null max-depth null))
-       (subs (sort car> subs))
+      ((rs max-depth (rand-range rs 4 20)) ; <- 32 gives a max 100ms search
+       (subs (timed "radix-walk" (radix-walk (suffixen lst) null max-depth null)))
+       (subs (timed "sorting" (sort car> subs)))
        (rs n (rand rs (fold + 0 (map car subs)))))
       (if (null? subs) ;; <- blank → null
          (values rs null)
@@ -610,19 +727,19 @@
                      (append head tail))))
             (cdr ll)))))
 
-;; todo: stub, parse the code point and edit separately instead
-(define (sed-utf8ed rs)
+;; todo: stub, parse the (or next first valid, if any) code point and edit separately later
+(define (sed-utf8-edit rs)
    (λ (ll)
       (lets ((rs p (rand rs (sizeb (car ll)))))
          (cons 
             (edit-byte-vector (car ll) p 
                (λ (old tl) 
                   ;; assuming we hit a 6-bit ascii char, make it unnecessarily wide
-                  (ilist #b11000000 (bor old #b10000000))))
+                  (ilist #b11000000 (bor old #b10000000) tl)))
             (cdr ll)))))
 
 ;; insert UTF-8 that might be mishandled
-(define (sed-utf8ail rs)
+(define (sed-utf8-insert rs)
    (λ (ll)
       (lets
          ((rs p (rand rs (sizeb (car ll))))
@@ -643,10 +760,12 @@
       (rs-fold-node "flip" sed-flip)
       (rs-fold-node "stut" sed-stut)
       (rs-fold-node "num" sed-num)
-      (rs-fold-node "u8ins" sed-utf8ail)
+      (rs-fold-node "u8ins" sed-utf8-insert)
       (rs-fold-node "perm" sed-perm)
       (rs-fold-node "surf" sed-surf)
-      (rs-fold-node "u8ed" sed-utf8ed)
+      (rs-fold-node "u8ed" sed-utf8-edit)
+      (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
+      (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
       (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
