@@ -7,6 +7,7 @@ fail() {
    exit 1
 }
 
+SAMPLES=tests/*
 mkdir -p tmp
 
 NFILES=10
@@ -16,8 +17,8 @@ for foo in $(ol -e "(iota 0 1 $NFILES)")
 do
    SEED=$RANDOM
    echo -n "-"
-   $@ --seed $SEED *.l > tmp/stdout-$$
-   strace $@ -o 127.0.0.1:31337 --seed $SEED *.l 2> tmp/radamsa-$$ & 
+   $@ --seed $SEED $SAMPLES > tmp/stdout-$$
+   strace $@ -o 127.0.0.1:31337 --seed $SEED $SAMPLES 2> tmp/radamsa-$$ & 
    echo "(mail stdout (force (port->byte-stream (interact (open-socket 31337) 'accept)))) (close-port stdout)" | ol -q > tmp/tcp-$$
    # not using netcat because there are minor changes in command line flags
    #strace nc -l -p 31337 > tmp/tcp-$$ 2>tmp/nc-$$                 # should be the same

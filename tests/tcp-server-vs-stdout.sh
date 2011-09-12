@@ -7,12 +7,13 @@ fail() {
 
 mkdir -p tmp
 
+SAMPLES=tests/*
 NFILES=100
 SEED=$RANDOM
 
-$@ -o - --seed $SEED -n $NFILES *.l > tmp/stdout-$$
+$@ -o - --seed $SEED -n $NFILES $SAMPLES > tmp/stdout-$$
 
-$@ -o :31337 --seed $SEED -n $NFILES *.l &
+$@ -o :31337 --seed $SEED -n $NFILES $SAMPLES &
 
 echo -n "" > tmp/tcp-$$
 
