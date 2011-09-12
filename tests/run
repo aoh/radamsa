@@ -2,6 +2,8 @@
 
 echo "Testing $@:"
 
+rm tmp/* &> /dev/null
+
 fail() {
    echo "ERROR - " $@
    exit 1
