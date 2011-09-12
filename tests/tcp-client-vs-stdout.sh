@@ -17,10 +17,9 @@ do
    SEED=$RANDOM
    echo -n "-"
    $@ --seed $SEED *.l > tmp/stdout-$$
-   $@ -o 127.0.0.1:31337 --seed $SEED *.l & 
-   echo "(mail stdout (force (port->byte-stream (interact (open-socket 31337) 'accept)))) (interact stdout 'sync)" \
-      | ol -q \
-      > tmp/tcp-$$
+   strace $@ -o 127.0.0.1:31337 --seed $SEED *.l 2> tmp/radamsa-$$ & 
+   echo "(mail stdout (force (port->byte-stream (interact (open-socket 31337) 'accept)))) (close-port stdout)" | ol -q > tmp/tcp-$$
+   # not using netcat because there are minor changes in command line flags
    #strace nc -l -p 31337 > tmp/tcp-$$ 2>tmp/nc-$$                 # should be the same
 
    diff -q tmp/stdout-$$ tmp/tcp-$$ || fail "files differ: tmp/*-$$"
