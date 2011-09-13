@@ -4,11 +4,11 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: factor to modules
 ;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3
 ;; todo: make a priority adjustment pass and allow it to pass information back
 ;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
-;; todo: stream fuzzer: tree perm/drop/ins/dup/... -> t<name> <- using a local variant of old tehfu
 ;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
 ;; todo: stream fuzzer: cut&fill with probabilities
 ;; todo: stream fuzzer: local permu transform
@@ -25,7 +25,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.1a")
+(define version-str "Radamsa 0.2.1b")
 (define avg-block-size 4096)
 
 (import lib-args)
@@ -1330,13 +1330,18 @@
             (list n n s a n s b n s c n s b n s a n)))
       (mail stdout (list 27 91 48 109 10))))
 
+(define apology 
+   '("Radamsa stopped because something bad was about to happen. Sorry."
+     "If you want to help fix this, drop by at #radamsa on freenode, file"
+     "a bug at http://code.google.com/p/ouspg/issues/entry or send email to"
+     "aki.helin@ee.oulu.fi. Adding the following text and possibly"
+     "instructions to reproduce this crash will help."))
+
+;; todo: cut down a and b representation length if they are too large
 (define (boom err-code a b)
    (bummer)
-   (print "Radamsa stopped because something bad was about to happen. Sorry.")
-   (print "Please file an issue at http://code.google.com/p/ouspg/issues/entry")
-   (print "or send mail to aki.helin@ee.oulu.fi to get this fixed. Adding the")
-   (print "following text and insructions to reproduce this issue will help.")
-   (show "Error: " (list err-code 'a a 'b b)))
+   (for-each print apology)
+   (show "Info: " (list err-code 'a a 'b b)))
 
 (λ (args)
    (fork-server 'meta toy-meta)
