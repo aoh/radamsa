@@ -95,7 +95,7 @@
 (define (get-stdout-fd n)
    (pair 
       (λ (ll record-meta)
-         (record-meta n "" (car ll) "to-be-written/stdout") ;; <- when testing new crash-prone ones
+         ;(record-meta n "" (car ll) "to-be-written/stdout") ;; <- when testing new crash-prone ones
          (lets ((ok? w (send-stream (cdr ll) stdout)))
             (record-meta n "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
@@ -136,7 +136,7 @@
                      null pat)))
             (define port 
                (open-output-file path))
-            (record-meta nth path info "to-be-written") ;; <- when testing new crash-prone ones
+            ;(record-meta nth path info "to-be-written") ;; <- when testing new crash-prone ones
             (if port
                (lets ((ok? written (send-stream ll port)))
                   (if ok?
