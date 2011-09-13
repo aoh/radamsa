@@ -7,6 +7,7 @@
 ;; todo: factor to modules
 ;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3
 ;; todo: make a priority adjustment pass and allow it to pass information back
+;; todo: figure out how to allow looking at stdin data (preread a bit, but how to tell conveniently it cannot be forced further?)
 ;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
 ;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
@@ -25,7 +26,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.1c")
+(define version-str "Radamsa 0.2.1")
 (define avg-block-size 4096)
 
 (import lib-args)
