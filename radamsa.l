@@ -25,7 +25,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.1b")
+(define version-str "Radamsa 0.2.1c")
 (define avg-block-size 4096)
 
 (import lib-args)
@@ -95,6 +95,7 @@
 (define (get-stdout-fd n)
    (pair 
       (λ (ll record-meta)
+         (record-meta n "" (car ll) "to-be-written/stdout") ;; <- when testing new crash-prone ones
          (lets ((ok? w (send-stream (cdr ll) stdout)))
             (record-meta n "" (car ll) w)))
       (get-stdout-fd (+ n 1))))
@@ -135,7 +136,7 @@
                      null pat)))
             (define port 
                (open-output-file path))
-            ;(record-meta nth path info "to-be-written") ;; <- when testing new crash-prone ones
+            (record-meta nth path info "to-be-written") ;; <- when testing new crash-prone ones
             (if port
                (lets ((ok? written (send-stream ll port)))
                   (if ok?
@@ -1011,19 +1012,23 @@
    (cond
       ((null? all) (values all bll))
       ((null? bll) (values all bll))
-      (else
-         (lets 
-            ((a as b bs (bigger-first (car all) (car bll)))
-             (al (byte-vector->list a))
-             (bl (byte-vector->list b))
-             (merged (list->byte-vector (zip op al bl)))) ;; will cut tail of al
-            (values
-               (if (eq? al bl) ;; unless the tail is a lie
-                  (cons merged (cdr all))
-                  (ilist merged
-                     (list->byte-vector (map (λ (p) (refb a p)) (iota bs 1 as)))
-                     (cdr all)))
-               bll)))))
+      ((pair? all)
+         (if (pair? bll)
+            (lets 
+               ((a as b bs (bigger-first (car all) (car bll)))
+                (al (byte-vector->list a))
+                (bl (byte-vector->list b))
+                (merged (list->byte-vector (zip op al bl)))) ;; will cut tail of al
+               (values
+                  (if (eq? al bl) ;; unless the tail is a lie
+                     (cons merged (cdr all))
+                     (ilist merged
+                        (list->byte-vector (map (λ (p) (refb a p)) (iota bs 1 as)))
+                        (cdr all)))
+                  bll))
+            (zip-blocks op all (bll))))
+      (else 
+         (zip-blocks op (all) bll))))
 
 (define ll-muxers ;; todo: many to be added in 0.2.1
    (list
