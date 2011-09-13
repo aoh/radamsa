@@ -4,6 +4,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
+;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3
 ;; todo: make a priority adjustment pass and allow it to pass information back
 ;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
@@ -227,7 +228,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2"
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2"
             comment "Which stream fuzzers to run? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -578,7 +579,36 @@
              (lst (edit-sublist lst sub op)))
             (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
 
+;; duplicate a single branch
 (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
+
+;; duplicate a branch and whatever comes before the next one (if any)
+(define sed-tdup-run 
+   (sed-tree-op 
+      (λ (node) 
+         (cons (car node)
+            (let loop ((lst (cdr node)))
+               (if (or (null? lst) (pair? (car lst)))
+                  node
+                  (cons (car lst) (loop (cdr lst)))))))))
+
+;; duplicate a branch and whatever comes before the next one (if any)
+;; → swapped lst' (returning the original one if out of data)
+(define (swap-next lst node)
+   (if (null? lst) 
+      (values node lst)
+      (lets ((hd lst lst))
+         (if (pair? hd) ;; drop here
+            (values hd (cons node lst))
+            (lets ((node lst (swap-next lst node)))
+               (values node (cons hd lst)))))))
+
+;; swap a node with the next one at current level (if any)
+(define sed-tswap-level
+   (sed-tree-op 
+      (λ (node) 
+         (lets ((swapd lst (swap-next (cdr node) (car node))))
+            (cons swapd lst)))))
 
 (define sed-tdel (sed-tree-op (λ (node) (cdr node))))
 
@@ -775,7 +805,9 @@
       (rs-fold-node "surf" sed-surf)
       (rs-fold-node "u8ed" sed-utf8-edit)
       (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
+      (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
       (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
+      (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level (make arbitrary swap later)
       (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
