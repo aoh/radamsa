@@ -18,7 +18,7 @@ do
    SEED=$RANDOM
    echo -n "-"
    $@ --seed $SEED $SAMPLES > tmp/stdout-$$
-   strace $@ -o 127.0.0.1:31337 --seed $SEED $SAMPLES 2> tmp/radamsa-$$ & 
+   $@ -o 127.0.0.1:31337 --seed $SEED $SAMPLES 2> tmp/radamsa-$$ & 
    echo "(mail stdout (force (port->byte-stream (interact (open-socket 31337) 'accept)))) (close-port stdout)" | ol -q > tmp/tcp-$$
    # not using netcat because there are minor changes in command line flags
    #strace nc -l -p 31337 > tmp/tcp-$$ 2>tmp/nc-$$                 # should be the same
