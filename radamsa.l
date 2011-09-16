@@ -4,9 +4,12 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: factor to modules
-;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3
+;; note, use the precompiled C or binary from downloads instead
+
+;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom
 ;; todo: make a priority adjustment pass and allow it to pass information back
+;; todo: factor to modules
+;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3,l*=2
 ;; todo: figure out how to allow looking at stdin data (preread a bit, but how to tell conveniently it cannot be forced further?)
 ;; todo: use -g all,sample=0 to disable sample generator?
 ;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
@@ -26,7 +29,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.1")
+(define version-str "Radamsa 0.2.2a")
 (define avg-block-size 4096)
 
 (import lib-args)
@@ -179,7 +182,7 @@
           (ip fd cli))
          (lets 
             ((ip fd cli)
-             (ok? np (blocks->fd (cdr node) fd))) ; <- closes fd
+             (ok? np (blocks->socket (cdr node) fd))) ; <- closes fd, not blocks->fd due to win32 incompability
             (record-meta nth (render-ip ip) (car node) np)))))
 
 ;; str → ((info . fd) ...) | False
@@ -230,12 +233,12 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2"
-            comment "Which stream fuzzers to run? (pass help to list options)")
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,ldel,ldup,lins,lswapc"
+            comment "Which local mutations to enable? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
         (polymerase "-p" "--polymerase" has-arg default "onced" 
-            comment "Which stream mutator patterns to use? (pass help to list options)")
+            comment "Which local mutation patterns to use? (pass help to list options)")
         (muxers "-m" "--muxers" has-arg default "swap=4,cat,min,max,avg" 
             comment "Which stream muxers to use? (pass help to list options)")
         (muxer-polymerase "-P" "--muxer-polymerase" has-arg default "once" 
@@ -790,26 +793,103 @@
             (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl))))
             (cdr ll)))))
 
-;; todo: silly boilerplate
+;; bvec → ((... 10) .. (... [10])), cut after newlines
+(define (lines bvec)
+   (let loop ((lst (byte-vector->list bvec)) (buff null) (out null))
+      (if (null? lst) 
+         (if (null? buff)
+            (reverse out)
+            (reverse (cons (reverse buff) out)))
+         (lets ((hd lst lst))
+            (if (eq? hd 10) ;; newline
+               (loop lst null (cons (reverse (cons 10 buff)) out))
+               (loop lst (cons hd buff) out))))))
+
+;; delete a random line 
+(define (sed-ldel rs)
+   (λ (ll)
+      (lets 
+         ((ls (lines (car ll)))
+          (len (length ls)))
+         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+            (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
+               (cons (list->byte-vector (foldr append null (ldel ls a))) (cdr ll)))
+            ll)))) ;; do nothing if we don't get full lines in this block
+
+(define (sed-ldup rs)
+   (λ (ll)
+      (lets 
+         ((ls (lines (car ll)))
+          (len (length ls)))
+         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+            (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
+               (cons (list->byte-vector (foldr append null (ledn ls a (λ (x) (cons (car x) x))))) (cdr ll)))
+            ll)))) ;; do nothing if we don't get full lines in this block
+
+;; instert a random line to a random position
+(define (sed-lins rs)
+   (λ (ll)
+      (lets 
+         ((ls (lines (car ll)))
+          (len (length ls)))
+         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+            (lets 
+               ((rs from (rand-range rs 1 (- len 1)))
+                (rs to (rand-range rs 1 (- len 1)))) ;; fixme: growth -> may become too large
+               (cons (list->byte-vector (foldr append null (lins ls to (lref ls from)))) (cdr ll)))
+            ll))))
+
+;; swap two consecutive lines
+(define (sed-lswapc rs)
+   (λ (ll)
+      (lets 
+         ((ls (lines (car ll)))
+          (len (length ls)))
+         (if (> len 3) ;; we want at least [possibly-partial a b possibly-partial]
+            (lets 
+               ((rs pos (rand-range rs 1 (- len 2))))
+               (cons 
+                  (list->byte-vector 
+                     (foldr append null 
+                        (ledn ls pos (λ (x) (ilist (cadr x) (car x) (cddr x))))))
+                  (cdr ll)))
+            ll))))
+;; 
+
 ; (name . starter), starter : rs paths opts → ((info . func) ...)
 (define ll-fuzzers   
    (list
-      (rs-fold-node "star" sed-star)
+      ;; byte/bit-oriented
       (rs-fold-node "drop" sed-drop)
       (rs-fold-node "inc" sed-inc)
       (rs-fold-node "dec" sed-dec)
       (rs-fold-node "dup" sed-dup)
       (rs-fold-node "flip" sed-flip)
-      (rs-fold-node "stut" sed-stut)
-      (rs-fold-node "num" sed-num)
-      (rs-fold-node "u8ins" sed-utf8-insert)
       (rs-fold-node "perm" sed-perm)
+
+      ;; general purpose
+      (rs-fold-node "stut" sed-stut)
       (rs-fold-node "surf" sed-surf)
+
+      ;; text / numbers
+      (rs-fold-node "num" sed-num)
+
+      ;; text / UTF-8
+      (rs-fold-node "u8ins" sed-utf8-insert)
       (rs-fold-node "u8ed" sed-utf8-edit)
+
+      ;; text / partial parse tree 
       (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
       (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
       (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
       (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level (make arbitrary swap later)
+
+      ;; text / line-oriented 
+      (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
+      (rs-fold-node "ldup" sed-ldup) ;; clone a line
+      (rs-fold-node "lins" sed-lins) ;; insert a random line
+      (rs-fold-node "lswapc" sed-lswapc) ;; swap two consecutive lines
+
       (cons "crash" 'mr-crasher)))
 
 (define (string->vec str)
