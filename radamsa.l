@@ -497,7 +497,9 @@
         (123 . 125)  ; {}
         (34 . 34)    ; ""
         (39 . 39)))) ; ''
-      
+     
+;; → lst False = ran out of data trying to parse up to close, but lst is the same with partial parsing
+;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
 (define (grow lst close rout)
    (if (null? lst)
       (values (reverse rout) False) ;; out of data, didn't find close. return partial parse.
@@ -508,12 +510,12 @@
                (values (reverse (cons close rout)) lst))
             ((get usual-delims hd F) =>
                (λ (next-close)
-                  (lets ((this lst (grow lst next-close (list hd))))
+                  (lets ((this lst (grow lst next-close null)))
                      (if lst ;; we didn't run out of data and this is a single tree node
-                        (grow lst close (cons this rout))
+                        (grow lst close (cons (cons hd this) rout))
                         ;; we ran out of data. this is a list of partial parses (having the data of 
                         ;; lst after hd in some form) which we want to preserve as tail
-                        (values (cons hd this) False)))))
+                        (values (append (reverse rout) (cons hd this)) False)))))
             (else ;; add one byte to this node
                (grow lst close (cons hd rout)))))))
 
@@ -578,10 +580,12 @@
          (reverse rout)
          (lets ((closep (get usual-delims (car lst) F)))
             (if closep
-               (lets ((this lst (grow (cdr lst) closep (list (car lst)))))
+               (lets 
+                  ((hd (car lst))
+                   (this lst (grow (cdr lst) closep null)))
                   (if lst
-                     (loop lst (cons this rout))
-                     (append (reverse rout) this)))
+                     (loop lst (cons (cons hd this) rout))
+                     (append (reverse rout) (cons hd this))))
                (loop (cdr lst) (cons (car lst) rout)))))))
 
 (define (flatten node tl)
@@ -595,10 +599,15 @@
       (λ (ll)
          (lets
             ((lst (partial-parse (byte-vector->list (car ll))))
+             ;(_ (if (not (equal? (byte-vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
              (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
              (lst (edit-sublist lst sub op)))
             (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
 
+;; checking for a bug
+(((sed-tree-op (lambda (x) x)) (seed->rands 42))
+   (list (vector 34 100 40 101)))
+ 
 (define (sed-tswap rs)
    (λ (ll)
       (lets
