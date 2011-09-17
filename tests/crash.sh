@@ -1,6 +1,6 @@
 #!/bin/sh
 
-$@ -f crash 2>&1 > /dev/null
+$@ -f crash > /dev/null 2>&1
 test $? = 127 || exit 1
 
 true
