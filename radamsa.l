@@ -555,6 +555,21 @@
                (edit-sublist (cdr lst) sub op)))
       lst))
 
+;; lst (ff of node → (node → node)) → lst' ; <- could also be done with a recursive-mapn
+(define (edit-sublists lst opff)
+   (if (pair? lst)
+      (let ((hd (car lst)))
+         (if (pair? hd)
+            (let ((maybe-op (get opff hd F)))
+               (if maybe-op
+                  (cons (maybe-op (car lst))
+                     (edit-sublists (cdr lst) opff))
+                  (cons (edit-sublists (car lst) opff)
+                     (edit-sublists (cdr lst) opff))))
+            (cons (car lst)
+               (edit-sublists (cdr lst) opff))))
+      lst))
+
 ;; todo: define reservoir-sampling-style node selection (1, 2 or n nodes)
 ;; todo: pass 1, partial parse, pass 2, choose nodes, pass3, search and replace by id
 (define (partial-parse lst)
@@ -583,6 +598,19 @@
              (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
              (lst (edit-sublist lst sub op)))
             (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
+
+(define (sed-tswap rs)
+   (λ (ll)
+      (lets
+         ((lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+          (subs (sublists lst)) ;; find all nodes recursively
+          (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
+          (toswap (cons (car subs) toswap))
+          ;(_ (show " swapping " (list (length toswap) " out of " (length subs))))
+          (rs arr (random-permutation rs subs)) ;; permute targets
+          (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
+          (lst (edit-sublists lst mapping))) ;; fire
+         (cons (list->byte-vector (flatten lst null)) (cdr ll)))))
 
 ;; duplicate a single branch
 (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
@@ -883,6 +911,7 @@
       (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
       (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
       (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level (make arbitrary swap later)
+      (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
 
       ;; text / line-oriented 
       (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
@@ -1410,11 +1439,12 @@
       ((s "        ") (a " *    *    *")
        (n (list->string (list 10)))
        (b "   *  *  *") (c "* * BOOOM *  *"))
-      (mail stdout (list 27 35 55 27 91 53 109))
-      (print 
+      (mail stderr (list 27 35 55 27 91 53 109))
+      (print-to 
          (foldr string-append "" 
-            (list n n s a n s b n s c n s b n s a n)))
-      (mail stdout (list 27 91 48 109 10))))
+            (list n n s a n s b n s c n s b n s a n))
+         stderr)
+      (mail stderr (list 27 91 48 109 10))))
 
 (define apology 
    '("Radamsa stopped because something bad was about to happen. Sorry."
@@ -1426,7 +1456,7 @@
 ;; todo: cut down a and b representation length if they are too large
 (define (boom err-code a b)
    (bummer)
-   (for-each print apology)
+   (for-each (λ (x) (print-to x stderr)) apology)
    (show "Info: " (list err-code 'a a 'b b)))
 
 (λ (args)
