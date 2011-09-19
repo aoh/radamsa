@@ -29,7 +29,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.2b")
+(define version-str "Radamsa 0.2.2c")
 (define avg-block-size 4096)
 
 (import lib-args)
@@ -38,6 +38,12 @@
 
 (define (renderer ob tl) 
    (render render ob tl))
+
+(define  (length< lst n)
+   (cond
+      ((eq? n 0) False)
+      ((null? lst) True)
+      (else (length< (cdr lst) (- n 1)))))
 
 (define (timed-thunk msg thunk)
    (lets
@@ -233,7 +239,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,ldel,ldup,lins,lswapc"
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,tswap2=4,ldel,ldup,lins,lswapc"
             comment "Which local mutations to enable? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -610,16 +616,36 @@
  
 (define (sed-tswap rs)
    (λ (ll)
-      (lets
-         ((lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
-          (subs (sublists lst)) ;; find all nodes recursively
-          (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
-          (toswap (cons (car subs) toswap))
-          ;(_ (show " swapping " (list (length toswap) " out of " (length subs))))
-          (rs arr (random-permutation rs subs)) ;; permute targets
-          (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
-          (lst (edit-sublists lst mapping))) ;; fire
-         (cons (list->byte-vector (flatten lst null)) (cdr ll)))))
+      (call/cc 
+         (λ (ret)
+            (lets
+               ((skip (λ () (ret ll)))
+                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                (subs (sublists lst)) ;; find all nodes recursively
+                (subs (if (length< subs 3) (skip) subs))
+                (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
+                (toswap (cons (car subs) toswap))
+                (rs arr (random-permutation rs subs)) ;; permute targets
+                (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
+                (lst (edit-sublists lst mapping))) ;; fire
+               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+
+(define (sed-tswap-two rs)
+   (λ (ll)
+      (call/cc
+         (λ (ret)
+            (lets 
+               ((skip (λ () (ret ll)))
+                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                (subs (sublists lst))
+                (subs (if (length< subs 3) (skip) subs))
+                (rs toswap (reservoir-sample rs subs 2))
+                (a (car toswap)) 
+                (b (cadr toswap))
+                ;(_ (show " swapping " (list a 'and b))
+                (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
+                (lst (edit-sublists lst mapping)))
+               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
 
 ;; duplicate a single branch
 (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
@@ -919,8 +945,9 @@
       (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
       (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
       (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
-      (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level (make arbitrary swap later)
+      (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level
       (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
+      (rs-fold-node "tswap2" sed-tswap-two) ;; swap 2 pairwise
 
       ;; text / line-oriented 
       (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
