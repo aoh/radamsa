@@ -239,7 +239,7 @@
 
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,tswap2=4,ldel,ldup,lins,lswapc"
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,ldel,ldup,lins,lswapc"
             comment "Which local mutations to enable? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
@@ -610,10 +610,8 @@
              (lst (edit-sublist lst sub op)))
             (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
 
-;; checking for a bug
-(((sed-tree-op (lambda (x) x)) (seed->rands 42))
-   (list (vector 34 100 40 101)))
- 
+;; todo: make these 3 with (sublists → mapping) → (rs → (ll → ...))
+
 (define (sed-tswap rs)
    (λ (ll)
       (call/cc 
@@ -642,9 +640,41 @@
                 (rs toswap (reservoir-sample rs subs 2))
                 (a (car toswap)) 
                 (b (cadr toswap))
-                ;(_ (show " swapping " (list a 'and b))
+                ;(_ (show " swapping " (list a 'and b)))
                 (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
                 (lst (edit-sublists lst mapping)))
+               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+
+(define (print-rewrite a b)
+   (lets
+      ((a (flatten a null))
+       (b (flatten b null))
+       (sa (list->string a))
+       (sb (list->string b)))
+      (print-to "REWRITE FROM --------------------------------------------------------------------------" stderr)
+      (print-to (or sa (list 'bad 'data a)) stderr)
+      (print "")
+      (print-to "REWRITE TO   --------------------------------------------------------------------------" stderr)
+      (print-to (or sb (list 'bad 'data b)) stderr)
+      (print "")
+      (print-to "---------------------------------------------------------------------------------------" stderr)))
+
+(define (sed-tswap-one rs)
+   (λ (ll)
+      (call/cc
+         (λ (ret)
+            (lets 
+               ((skip (λ () (ret ll)))
+                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                (subs (sublists lst))
+                (subs (if (length< subs 3) (skip) subs))
+                (rs toswap (reservoir-sample rs subs 2))
+                (a (car toswap)) 
+                (b (cadr toswap))
+                ;(_ (print-rewrite a b))
+                ;(_ (show " swapping " (list a 'and b)))
+                (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
+                (lst (edit-sublist lst a (λ (x) b))))
                (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
 
 ;; duplicate a single branch
@@ -947,7 +977,8 @@
       (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
       (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level
       (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
-      (rs-fold-node "tswap2" sed-tswap-two) ;; swap 2 pairwise
+      (rs-fold-node "ts2" sed-tswap-two) ;; swap 2 pairwise
+      (rs-fold-node "ts1" sed-tswap-one) ;; swap 1 with another one
 
       ;; text / line-oriented 
       (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
