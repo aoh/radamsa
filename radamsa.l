@@ -6,9 +6,8 @@
 
 ;; note, use the precompiled C or binary from downloads instead
 
-;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom
 ;; todo: make a priority adjustment pass and allow it to pass information back
-;; todo: factor to modules
+;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom
 ;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3,l*=2
 ;; todo: figure out how to allow looking at stdin data (preread a bit, but how to tell conveniently it cannot be forced further?)
 ;; todo: use -g all,sample=0 to disable sample generator?
@@ -29,7 +28,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.2c")
+(define version-str "Radamsa 0.2.2d")
 (define avg-block-size 4096)
 
 (import lib-args)
@@ -98,6 +97,9 @@
 ;; functions that get metadata about generated data
 (define (record-meta/stderr n name info len)
    (mail stderr (foldr renderer '(10) (list " " n ": " name " → " info ": " len "b"))))
+
+(define (string->vec str)
+   (list->byte-vector (render render str null)))
 
 (define (record-meta/not n name info len) 42)
 
@@ -237,6 +239,7 @@
      (advanced "-H"  "--big-help" comment "Show more options.")
 ))
 
+;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
       `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,ldel,ldup,lins,lswapc"
@@ -334,8 +337,6 @@
             (pair (cons name (value rs))
                (loop (pop-rand rs)))))))
 
-;;; Stream fuzzers -----------------------------------------------------------
-
 (define (byte-vector->list bvec)
    (let ((n (sizeb bvec)))
       (if (eq? n 0)
@@ -346,947 +347,994 @@
                (lets ((posp _ (fx- pos 1)))
                   (loop posp (cons (refb bvec pos) out))))))))
 
-;; todo: add zero width joiners, different length leading blank padding bytes etc
-(define funny-unicode
-   (list->tuple
-      (append
-         (list ;; some manual ones
-            (list 239 191 191)     ;; 65535
-            (list 240 144 128 128) ;; 65536
-            (list #xef #xbb #xbf)  ;; the canonical utf8 bom
-            (list #xfe #xff)       ;; utf16 be bom
-            (list #xff #xfe)       ;; utf16 le bom
-            (list 0 0 #xff #xff)   ;; ascii null be
-            (list #xff #xff 0 0)   ;; ascii null le
-            (list 43 47 118 56)    ;; and some others from wikipedia
-            (list 43 47 118 57) (list 43 47 118 43) (list 43 47 118 47)
-            (list 247 100 76) (list 221 115 102 115) (list 14 254 255) (list 251 238 40)
-            (list 251 238 40 255) (list 132 49 149 51))
-         (map ;; some valid points and ranges
-            (λ (codepoint)
-               (render render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
-            (fold
-            (λ (tl node)
-                  (if (pair? node) ;; inclusive range
-                     (append (iota (car node) 1 (+ (cdr node) 1)) tl)
-                     (cons node tl)))
-               null
-               '((#x0009 . #x000d) #x00a0 #x1680 #x180e (#x2000 . #x200a) #x2028 #x2029 #x202f #x205f
-                 #x3000 (#x200e . #x200f) (#x202a . #x202e) (#x200c . #x200d) #x0345 #x00b7 (#x02d0 . #x02d1) 
-                 #xff70 (#x02b0 . #x02b8) #xfdd0 #x034f (#x115f . #x1160) (#x2065 . #x2069) #x3164 #xffa0
-                 #xe0001 (#xe0020 . #xe007f) (#x0e40 . #x0e44) #x1f4a9))))))
 
-;; clone a byte vector to a list and edit at given position (using primops since this is heavily used)
-(define (edit-byte-vector bvec edit-pos fn)
-   (let ((len (sizeb bvec)))
-      (if (eq? len 0)
-         bvec
-         (let loop ((pos (- len 1)) (out null))
-            (let ((val (refb bvec pos)))
-               (if (eq? pos edit-pos)
-                  (if (eq? pos 0)
-                     (list->byte-vector (fn val out))
-                     (lets ((pos _ (fx- pos 1)))
-                        (loop pos (fn val out))))
-                  (if (eq? pos 0)
-                     (list->byte-vector (cons val out))
-                     (lets ((pos _ (fx- pos 1)))
-                        (loop pos (cons val out))))))))))
 
-(define (digit-val d)
-   (cond
-      ((lesser? d 48) F)
-      ((lesser? 57 d) F)
-      (else (- d 48))))
+;;;
+;;; LL mutations -----------------------------------------------------------
+;;;
 
-; → digit|F tail
-(define (get-num lst)
-   (let loop ((lst lst) (n 0) (digits 0))
+(define-module lib-ll-mutations
+
+   (export ll-mutations)
+
+   ;; todo: add zero width joiners, different length leading blank padding bytes etc
+   (define funny-unicode
+      (list->tuple
+         (append
+            (list ;; some manual ones
+               (list 239 191 191)     ;; 65535
+               (list 240 144 128 128) ;; 65536
+               (list #xef #xbb #xbf)  ;; the canonical utf8 bom
+               (list #xfe #xff)       ;; utf16 be bom
+               (list #xff #xfe)       ;; utf16 le bom
+               (list 0 0 #xff #xff)   ;; ascii null be
+               (list #xff #xff 0 0)   ;; ascii null le
+               (list 43 47 118 56)    ;; and some others from wikipedia
+               (list 43 47 118 57) (list 43 47 118 43) (list 43 47 118 47)
+               (list 247 100 76) (list 221 115 102 115) (list 14 254 255) (list 251 238 40)
+               (list 251 238 40 255) (list 132 49 149 51))
+            (map ;; some valid points and ranges
+               (λ (codepoint)
+                  (render render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
+               (fold
+               (λ (tl node)
+                     (if (pair? node) ;; inclusive range
+                        (append (iota (car node) 1 (+ (cdr node) 1)) tl)
+                        (cons node tl)))
+                  null
+                  '((#x0009 . #x000d) #x00a0 #x1680 #x180e (#x2000 . #x200a) #x2028 #x2029 #x202f #x205f
+                    #x3000 (#x200e . #x200f) (#x202a . #x202e) (#x200c . #x200d) #x0345 #x00b7 (#x02d0 . #x02d1) 
+                    #xff70 (#x02b0 . #x02b8) #xfdd0 #x034f (#x115f . #x1160) (#x2065 . #x2069) #x3164 #xffa0
+                    #xe0001 (#xe0020 . #xe007f) (#x0e40 . #x0e44) #x1f4a9))))))
+
+   ;; clone a byte vector to a list and edit at given position (using primops since this is heavily used)
+   (define (edit-byte-vector bvec edit-pos fn)
+      (let ((len (sizeb bvec)))
+         (if (eq? len 0)
+            bvec
+            (let loop ((pos (- len 1)) (out null))
+               (let ((val (refb bvec pos)))
+                  (if (eq? pos edit-pos)
+                     (if (eq? pos 0)
+                        (list->byte-vector (fn val out))
+                        (lets ((pos _ (fx- pos 1)))
+                           (loop pos (fn val out))))
+                     (if (eq? pos 0)
+                        (list->byte-vector (cons val out))
+                        (lets ((pos _ (fx- pos 1)))
+                           (loop pos (cons val out))))))))))
+
+   (define (digit-val d)
       (cond
-         ((null? lst)
-            (if (eq? digits 0)
-               (values F null)
-               (values n null)))
-         ((digit-val (car lst)) =>
-            (λ (d) (loop (cdr lst) (+ d (* n 10)) (+ digits 1))))
-         ((eq? digits 0)
-            (values F lst))
-         (else
-            (values n lst)))))
+         ((lesser? d 48) F)
+         ((lesser? 57 d) F)
+         (else (- d 48))))
 
-;; copy from pos up to end (not countin it)
-(define (copy-range pos end tail)
-   (if (eq? pos end)
-      tail
-      (cons (car pos) (copy-range (cdr pos) end tail))))
-
-;; fixme: simple placeholder
-(define (mutate-num rs num)
-   (lets ((rs n (rand rs 16)))
-      (cond
-         ((eq? n 0)  (values rs (+ n 1)))
-         ((eq? n 1)  (values rs (- n 1)))
-         ((eq? n 2)  (values rs 0)) ;; todo, pack funny nums to a list and reduce opts
-         ((eq? n 3)  (values rs 1))
-         ((eq? n 4)  (values rs #xff))
-         ((eq? n 5)  (values rs #x100))
-         ((eq? n 6)  (values rs #xffff))
-         ((eq? n 7)  (values rs #x10000))
-         ((eq? n 8)  (values rs #x7fffffff))
-         ((eq? n 9)  (values rs #x80000000))
-         ((eq? n 10) (values rs #xffffffff)) ;; todo 64-bit also when using a list
-         ((eq? n 11) (values rs #x100000000))
-         ((eq? n 12)
-            (lets ((rs m (rand rs (* n 2))))
-               (values rs (- n m))))
-         (else
-            (lets
-               ((rs n (rand-range rs 1 129))
-                (rs n (rand-log rs n)))
-               (values rs (+ num n)))))))
-
-(define (mutate-a-num rs lst nfound)
-   (if (null? lst)
-      (lets ((rs which (rand rs nfound)))
-         ;; choose which to mutate (or 0 if none)
-         (values rs which null))
-      (lets ((valp lstp (get-num lst)))
-         (if valp
-            (lets ((rs which tail (mutate-a-num rs lstp (+ nfound 1))))
-               (if (eq? which 0) ;; i won
-                  (lets
-                     ((rs new (mutate-num rs valp))
-                      (new-lst (render render new tail)))
-                     (values rs -1 (render render new tail)))
-                  (values rs (- which 1)
-                     (copy-range lst lstp tail))))
-            (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
-               (values rs which (cons (car lst) tail)))))))
-
-;; todo: pack stream fuzzers to the list itself
-(define (sed-num rs)
-   (λ (ll)
-      (lets
-         ((lst (vec->list (car ll)))
-          (rs n lst (mutate-a-num rs lst 0)))
-         (cons (list->byte-vector lst) (cdr ll)))))
-
-(define (sed-star rs) ;; test fuzzer, replaces a character with *
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl))) (cdr ll)))))
-
-(define (sed-drop rs) ;; droa byte
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons (edit-byte-vector (car ll) p (λ (old tl) tl)) (cdr ll)))))
-
-(define (sed-inc rs) ;; increment a byte mod 256
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll)))))
-
-(define (sed-flip rs) ;; flip a bit
-   (λ (ll)
-      (lets 
-         ((rs p (rand rs (sizeb (car ll))))
-          (rs b (rand rs 8)))
-         (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor (<< 1 b) old) tl))) (cdr ll)))))
-
-;;; sed-tree-* utils
-
-(define usual-delims ; <- could be settable from command line
-   (list->ff
-      '((40 . 41)    ; ()
-        (91 . 93)    ; []
-        (60 . 62)    ; <>
-        (123 . 125)  ; {}
-        (34 . 34)    ; ""
-        (39 . 39)))) ; ''
-     
-;; → lst False = ran out of data trying to parse up to close, but lst is the same with partial parsing
-;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
-(define (grow lst close rout)
-   (if (null? lst)
-      (values (reverse rout) False) ;; out of data, didn't find close. return partial parse.
-      (lets ((hd lst lst))
+   ; → digit|F tail
+   (define (get-num lst)
+      (let loop ((lst lst) (n 0) (digits 0))
          (cond
-            ((eq? hd close)
-               ;; match complete, return with rest of list
-               (values (reverse (cons close rout)) lst))
-            ((get usual-delims hd F) =>
-               (λ (next-close)
-                  (lets ((this lst (grow lst next-close null)))
-                     (if lst ;; we didn't run out of data and this is a single tree node
-                        (grow lst close (cons (cons hd this) rout))
-                        ;; we ran out of data. this is a list of partial parses (having the data of 
-                        ;; lst after hd in some form) which we want to preserve as tail
-                        (values (append (reverse rout) (cons hd this)) False)))))
-            (else ;; add one byte to this node
-               (grow lst close (cons hd rout)))))))
+            ((null? lst)
+               (if (eq? digits 0)
+                  (values F null)
+                  (values n null)))
+            ((digit-val (car lst)) =>
+               (λ (d) (loop (cdr lst) (+ d (* n 10)) (+ digits 1))))
+            ((eq? digits 0)
+               (values F lst))
+            (else
+               (values n lst)))))
 
-;; count how many list nodes are in a tree structure
-(define (count-nodes lst)
-   (let loop ((lst lst) (n 0))
-      (cond
-         ((null? lst) n)
-         ((pair? (car lst))
-            (loop (cdr lst)
-               (loop (car lst) (+ n 1))))
-         (else
-            (loop (cdr lst) n)))))
+   ;; copy from pos up to end (not countin it)
+   (define (copy-range pos end tail)
+      (if (eq? pos end)
+         tail
+         (cons (car pos) (copy-range (cdr pos) end tail))))
 
-;; lst → a list of lists (not counting tails) in lst, when walked recursively, not counting lst itself
-(define (sublists lst)
-   (let loop ((lst lst) (found null))
-      (if (null? lst) 
-         found
-         (let ((hd (car lst)))
-            (if (pair? hd)
-               (loop (cdr lst) 
-                  (loop hd (cons hd found)))
-               (loop (cdr lst) found))))))
+   ;; fixme: simple placeholder
+   (define (mutate-num rs num)
+      (lets ((rs n (rand rs 16)))
+         (cond
+            ((eq? n 0)  (values rs (+ n 1)))
+            ((eq? n 1)  (values rs (- n 1)))
+            ((eq? n 2)  (values rs 0)) ;; todo, pack funny nums to a list and reduce opts
+            ((eq? n 3)  (values rs 1))
+            ((eq? n 4)  (values rs #xff))
+            ((eq? n 5)  (values rs #x100))
+            ((eq? n 6)  (values rs #xffff))
+            ((eq? n 7)  (values rs #x10000))
+            ((eq? n 8)  (values rs #x7fffffff))
+            ((eq? n 9)  (values rs #x80000000))
+            ((eq? n 10) (values rs #xffffffff)) ;; todo 64-bit also when using a list
+            ((eq? n 11) (values rs #x100000000))
+            ((eq? n 12)
+               (lets ((rs m (rand rs (* n 2))))
+                  (values rs (- n m))))
+            (else
+               (lets
+                  ((rs n (rand-range rs 1 129))
+                   (rs n (rand-log rs n)))
+                  (values rs (+ num n)))))))
 
-(define (pick-sublist rs lst)
-   (let ((subs (sublists lst)))
-      (if (null? subs)
-         (values rs False)
-         (lets ((rs n (rand rs (length subs))))
-            (values rs (lref subs n))))))
-
-;; replace the node (sub . tail) with (op rs (sub . tail))
-(define (edit-sublist lst sub op)
-   (if (pair? lst)
-      (if (eq? (car lst) sub)
-         (op lst)
-         (cons (edit-sublist (car lst) sub op)
-               (edit-sublist (cdr lst) sub op)))
-      lst))
-
-;; lst (ff of node → (node → node)) → lst' ; <- could also be done with a recursive-mapn
-(define (edit-sublists lst opff)
-   (if (pair? lst)
-      (let ((hd (car lst)))
-         (if (pair? hd)
-            (let ((maybe-op (get opff hd F)))
-               (if maybe-op
-                  (cons (maybe-op (car lst))
-                     (edit-sublists (cdr lst) opff))
-                  (cons (edit-sublists (car lst) opff)
-                     (edit-sublists (cdr lst) opff))))
-            (cons (car lst)
-               (edit-sublists (cdr lst) opff))))
-      lst))
-
-;; todo: define reservoir-sampling-style node selection (1, 2 or n nodes)
-;; todo: pass 1, partial parse, pass 2, choose nodes, pass3, search and replace by id
-(define (partial-parse lst)
-   (let loop ((lst lst) (rout null))
+   (define (mutate-a-num rs lst nfound)
       (if (null? lst)
-         (reverse rout)
-         (lets ((closep (get usual-delims (car lst) F)))
-            (if closep
-               (lets 
-                  ((hd (car lst))
-                   (this lst (grow (cdr lst) closep null)))
-                  (if lst
-                     (loop lst (cons (cons hd this) rout))
-                     (append (reverse rout) (cons hd this))))
-               (loop (cdr lst) (cons (car lst) rout)))))))
+         (lets ((rs which (rand rs nfound)))
+            ;; choose which to mutate (or 0 if none)
+            (values rs which null))
+         (lets ((valp lstp (get-num lst)))
+            (if valp
+               (lets ((rs which tail (mutate-a-num rs lstp (+ nfound 1))))
+                  (if (eq? which 0) ;; i won
+                     (lets
+                        ((rs new (mutate-num rs valp))
+                         (new-lst (render render new tail)))
+                        (values rs -1 (render render new tail)))
+                     (values rs (- which 1)
+                        (copy-range lst lstp tail))))
+               (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
+                  (values rs which (cons (car lst) tail)))))))
 
-(define (flatten node tl)
-   (cond
-      ((null? node) tl)
-      ((pair? node) (flatten (car node) (flatten (cdr node) tl)))
-      (else (cons node tl))))
-
-(define (sed-tree-op op)
-   (λ (rs)
+   ;; todo: pack stream fuzzers to the list itself
+   (define (sed-num rs)
       (λ (ll)
          (lets
-            ((lst (partial-parse (byte-vector->list (car ll))))
-             ;(_ (if (not (equal? (byte-vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
-             (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
-             (lst (edit-sublist lst sub op)))
-            (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
+            ((lst (vec->list (car ll)))
+             (rs n lst (mutate-a-num rs lst 0)))
+            (cons (list->byte-vector lst) (cdr ll)))))
 
-;; todo: make these 3 with (sublists → mapping) → (rs → (ll → ...))
+   (define (sed-star rs) ;; test fuzzer, replaces a character with *
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl))) (cdr ll)))))
 
-(define (sed-tswap rs)
-   (λ (ll)
-      (call/cc 
-         (λ (ret)
-            (lets
-               ((skip (λ () (ret ll)))
-                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
-                (subs (sublists lst)) ;; find all nodes recursively
-                (subs (if (length< subs 3) (skip) subs))
-                (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
-                (toswap (cons (car subs) toswap))
-                (rs arr (random-permutation rs subs)) ;; permute targets
-                (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
-                (lst (edit-sublists lst mapping))) ;; fire
-               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+   (define (sed-drop rs) ;; droa byte
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons (edit-byte-vector (car ll) p (λ (old tl) tl)) (cdr ll)))))
 
-(define (sed-tswap-two rs)
-   (λ (ll)
-      (call/cc
-         (λ (ret)
-            (lets 
-               ((skip (λ () (ret ll)))
-                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
-                (subs (sublists lst))
-                (subs (if (length< subs 3) (skip) subs))
-                (rs toswap (reservoir-sample rs subs 2))
-                (a (car toswap)) 
-                (b (cadr toswap))
-                ;(_ (show " swapping " (list a 'and b)))
-                (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
-                (lst (edit-sublists lst mapping)))
-               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+   (define (sed-inc rs) ;; increment a byte mod 256
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll)))))
 
-(define (print-rewrite a b)
-   (lets
-      ((a (flatten a null))
-       (b (flatten b null))
-       (sa (list->string a))
-       (sb (list->string b)))
-      (print-to "REWRITE FROM --------------------------------------------------------------------------" stderr)
-      (print-to (or sa (list 'bad 'data a)) stderr)
-      (print "")
-      (print-to "REWRITE TO   --------------------------------------------------------------------------" stderr)
-      (print-to (or sb (list 'bad 'data b)) stderr)
-      (print "")
-      (print-to "---------------------------------------------------------------------------------------" stderr)))
+   (define (sed-flip rs) ;; flip a bit
+      (λ (ll)
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs b (rand rs 8)))
+            (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor (<< 1 b) old) tl))) (cdr ll)))))
 
-(define (sed-tswap-one rs)
-   (λ (ll)
-      (call/cc
-         (λ (ret)
-            (lets 
-               ((skip (λ () (ret ll)))
-                (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
-                (subs (sublists lst))
-                (subs (if (length< subs 3) (skip) subs))
-                (rs toswap (reservoir-sample rs subs 2))
-                (a (car toswap)) 
-                (b (cadr toswap))
-                ;(_ (print-rewrite a b))
-                ;(_ (show " swapping " (list a 'and b)))
-                (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
-                (lst (edit-sublist lst a (λ (x) b))))
-               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+   ;;; sed-tree-* utils
 
-;; duplicate a single branch
-(define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
-
-;; duplicate a branch and whatever comes before the next one (if any)
-(define sed-tdup-run 
-   (sed-tree-op 
-      (λ (node) 
-         (cons (car node)
-            (let loop ((lst (cdr node)))
-               (if (or (null? lst) (pair? (car lst)))
-                  node
-                  (cons (car lst) (loop (cdr lst)))))))))
-
-;; duplicate a branch and whatever comes before the next one (if any)
-;; → swapped lst' (returning the original one if out of data)
-(define (swap-next lst node)
-   (if (null? lst) 
-      (values node lst)
-      (lets ((hd lst lst))
-         (if (pair? hd) ;; drop here
-            (values hd (cons node lst))
-            (lets ((node lst (swap-next lst node)))
-               (values node (cons hd lst)))))))
-
-;; swap a node with the next one at current level (if any)
-(define sed-tswap-level
-   (sed-tree-op 
-      (λ (node) 
-         (lets ((swapd lst (swap-next (cdr node) (car node))))
-            (cons swapd lst)))))
-
-(define sed-tdel (sed-tree-op (λ (node) (cdr node))))
-
-
-;;; sed-surf utils
-
-(define (match-prefix lst p)
-   (cond
-      ((null? p) True)
-      ((null? lst) False)
-      ((eq? (car lst) (car p))
-         (match-prefix (cdr lst) (cdr p)))
-      (else False)))
-
-(define (occurrences lst pat)
-   (let loop ((lst lst) (found null) (pos 0))
-      (cond
-         ((null? lst) found)
-         ((match-prefix lst pat)
-            (loop (cdr lst) (cons pos found) (+ pos 1)))
-         (else
-            (loop (cdr lst) found (+ pos 1))))))
-
-(define (add-suffix ff ls)
-   (if (null? ls)
-      ff
-      (lets ((x ls ls))
-         (put ff x
-            (cons ls (get ff x null))))))
-
-(define (note-substring occurrences rbytes others)
-   (let ((score (* (- occurrences 1) (* (- (length rbytes) 1) 2))))
-      (if (< score 1)
-         others
-         (cons (cons score rbytes) others))))
-
-;; → ((score reverse-bytes ..) ...)
-(define (radix-walk lsts path n found)
-   (cond
-      ((null? lsts) found)
-      ((null? (cdr lsts)) found)
-      ((eq? n 0) found)
-      (else
-         (ff-fold
-            (λ (found char tails)
-               (radix-walk tails (cons char path) (- n 1)
-                  (note-substring (length tails) (cons char path) found)))
-            found
-            (fold add-suffix False lsts)))))
-
-;; list of list suffixes
-(define (suffixen lst)
-   (if (null? lst)
-      null
-      (cons lst (suffixen (cdr lst)))))
-
-(define (car> a b) (> (car a) (car b)))
-
-;; ((i . x) (j . z) ...) n → z
-(define (priority-pick l n)
-   (let ((m (caar l)))
-      (if (<= n m)
-         (cdar l)
-         (priority-pick (cdr l) (- n m)))))
-
-;; todo: make surf max jump size a command line flag
-(define (frequent-substring rs lst)
-   (lets
-      ((rs max-depth (rand-range rs 4 20)) ; <- 32 gives a max 100ms search
-       (subs (timed "radix-walk" (radix-walk (suffixen lst) null max-depth null)))
-       (subs (timed "sorting" (sort car> subs)))
-       (rs n (rand rs (fold + 0 (map car subs)))))
-      (if (null? subs) ;; <- blank → null
-         (values rs null)
-         (values rs (reverse (priority-pick subs n))))))
-
-;; poss quaranteed to have >= 2 elems
-(define (choose-jump rs poss len)
-   (lets
-      ((rs poss (random-permutation rs poss))
-       (from (car poss))
-       (to (cadr poss)))
-      (if (= (+ from len) (- to 1)) ;; wouldn't change the data
-         (values to from)
-         (values from to))))
-
-(define (sed-surf rs) ;; jump between two share suffixes in the block
-   (λ (ll)
-      (lets
-         ((lst (byte-vector->list (car ll)))
-          (rs root (frequent-substring rs lst))
-          (poss (occurrences lst root)))
-         ;; a jump list of one element is constructed for blocks with just one byte
-         ;(show "SURF: jumping " (list 'from from 'to to 'using root))
-         (if (> (length poss) 1)
-            (lets 
-               ((from to (choose-jump rs poss (length root)))
-                (block (car ll))
-                (get (λ (p) (refb block p)))
-                (pre (list->byte-vector (map get (iota 0 1 from))))
-                (post (list->byte-vector (map get (iota to 1 (sizeb block))))))
-               (ilist pre post (cdr ll)))
-            ll))))
-
-(define (sed-stut rs) ;; repeat a section
-   (λ (ll)
-      (lets ((n (sizeb (car ll))))
-         (if (< n 4)
-            ll
-            (lets
-               ((rs start (rand-range rs 0 (- n 2)))
-                (rs end (rand-range rs (+ start 1) n))
-                (pre (map (λ (p) (refb (car ll) p)) (iota 0 1 start)))
-                (post (map (λ (p) (refb (car ll) p)) (iota end 1 (sizeb (car ll)))))
-                (stut (list->byte-vector (map (λ (p) (refb (car ll) p)) (iota start 1 end))))
-                (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
-                (stuts
-                  (fold
-                     (λ (tl n) (cons stut tl))
-                     (if (null? post)
-                        (cdr ll)
-                        (cons (list->byte-vector post) (cdr ll)))
-                     (iota 0 1 n))))
-               (if (null? pre)
-                  stuts
-                  (cons (list->byte-vector pre) stuts)))))))
-
-(define (sed-dec rs) ;; decrement a byte mod 256
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons 
-            (edit-byte-vector (car ll) p 
-               (λ (old tl) (if (eq? old 0) 255 (cons (- old 1) tl))))
-            (cdr ll)))))
-
-(define (sed-dup rs) ;; duplicate a byte
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons 
-            (edit-byte-vector (car ll) p 
-               (λ (old tl) (ilist old old tl)))
-            (cdr ll)))))
-
-(define (sed-perm rs) ;; permute a few bytes
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons 
-            (edit-byte-vector (car ll) p 
-               (λ (old tl) 
-                  (lets 
-                     ((lst (cons old tl))
-                      (rs n (rand-range rs 2 20))
-                      (head (take lst n))
-                      (tail (drop lst n))
-                      (rs head (random-permutation rs head)))
-                     (append head tail))))
-            (cdr ll)))))
-
-;; todo: stub, parse the (or next first valid, if any) code point and edit separately later
-(define (sed-utf8-edit rs)
-   (λ (ll)
-      (lets ((rs p (rand rs (sizeb (car ll)))))
-         (cons 
-            (edit-byte-vector (car ll) p 
-               (λ (old tl) 
-                  ;; assuming we hit a 6-bit ascii char, make it unnecessarily wide
-                  (ilist #b11000000 (bor old #b10000000) tl)))
-            (cdr ll)))))
-
-;; insert UTF-8 that might be mishandled
-(define (sed-utf8-insert rs)
-   (λ (ll)
-      (lets
-         ((rs p (rand rs (sizeb (car ll))))
-          (rs bytes (rand-elem rs funny-unicode)))
-         (cons
-            (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl))))
-            (cdr ll)))))
-
-;; bvec → ((... 10) .. (... [10])), cut after newlines
-(define (lines bvec)
-   (let loop ((lst (byte-vector->list bvec)) (buff null) (out null))
-      (if (null? lst) 
-         (if (null? buff)
-            (reverse out)
-            (reverse (cons (reverse buff) out)))
+   (define usual-delims ; <- could be settable from command line
+      (list->ff
+         '((40 . 41)    ; ()
+           (91 . 93)    ; []
+           (60 . 62)    ; <>
+           (123 . 125)  ; {}
+           (34 . 34)    ; ""
+           (39 . 39)))) ; ''
+        
+   ;; → lst False = ran out of data trying to parse up to close, but lst is the same with partial parsing
+   ;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
+   (define (grow lst close rout)
+      (if (null? lst)
+         (values (reverse rout) False) ;; out of data, didn't find close. return partial parse.
          (lets ((hd lst lst))
-            (if (eq? hd 10) ;; newline
-               (loop lst null (cons (reverse (cons 10 buff)) out))
-               (loop lst (cons hd buff) out))))))
-
-;; delete a random line 
-(define (sed-ldel rs)
-   (λ (ll)
-      (lets 
-         ((ls (lines (car ll)))
-          (len (length ls)))
-         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
-            (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
-               (cons (list->byte-vector (foldr append null (ldel ls a))) (cdr ll)))
-            ll)))) ;; do nothing if we don't get full lines in this block
-
-(define (sed-ldup rs)
-   (λ (ll)
-      (lets 
-         ((ls (lines (car ll)))
-          (len (length ls)))
-         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
-            (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
-               (cons (list->byte-vector (foldr append null (ledn ls a (λ (x) (cons (car x) x))))) (cdr ll)))
-            ll)))) ;; do nothing if we don't get full lines in this block
-
-;; instert a random line to a random position
-(define (sed-lins rs)
-   (λ (ll)
-      (lets 
-         ((ls (lines (car ll)))
-          (len (length ls)))
-         (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
-            (lets 
-               ((rs from (rand-range rs 1 (- len 1)))
-                (rs to (rand-range rs 1 (- len 1)))) ;; fixme: growth -> may become too large
-               (cons (list->byte-vector (foldr append null (lins ls to (lref ls from)))) (cdr ll)))
-            ll))))
-
-;; swap two consecutive lines
-(define (sed-lswapc rs)
-   (λ (ll)
-      (lets 
-         ((ls (lines (car ll)))
-          (len (length ls)))
-         (if (> len 3) ;; we want at least [possibly-partial a b possibly-partial]
-            (lets 
-               ((rs pos (rand-range rs 1 (- len 2))))
-               (cons 
-                  (list->byte-vector 
-                     (foldr append null 
-                        (ledn ls pos (λ (x) (ilist (cadr x) (car x) (cddr x))))))
-                  (cdr ll)))
-            ll))))
-;; 
-
-; (name . starter), starter : rs paths opts → ((info . func) ...)
-(define ll-fuzzers   
-   (list
-      ;; byte/bit-oriented
-      (rs-fold-node "drop" sed-drop)
-      (rs-fold-node "inc" sed-inc)
-      (rs-fold-node "dec" sed-dec)
-      (rs-fold-node "dup" sed-dup)
-      (rs-fold-node "flip" sed-flip)
-      (rs-fold-node "perm" sed-perm)
-
-      ;; general purpose
-      (rs-fold-node "stut" sed-stut)
-      (rs-fold-node "surf" sed-surf)
-
-      ;; text / numbers
-      (rs-fold-node "num" sed-num)
-
-      ;; text / UTF-8
-      (rs-fold-node "u8ins" sed-utf8-insert)
-      (rs-fold-node "u8ed" sed-utf8-edit)
-
-      ;; text / partial parse tree 
-      (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
-      (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
-      (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
-      (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level
-      (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
-      (rs-fold-node "ts2" sed-tswap-two) ;; swap 2 pairwise
-      (rs-fold-node "ts1" sed-tswap-one) ;; swap 1 with another one
-
-      ;; text / line-oriented 
-      (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
-      (rs-fold-node "ldup" sed-ldup) ;; clone a line
-      (rs-fold-node "lins" sed-lins) ;; insert a random line
-      (rs-fold-node "lswapc" sed-lswapc) ;; swap two consecutive lines
-
-      (cons "crash" 'mr-crasher)))
-
-(define (string->vec str)
-   (list->byte-vector (render render str null)))
-
-;;; Stream generators -------------------------------------------------
-
-
-(define max-block-size (* 2 avg-block-size))
-
-;; bvec|F bvec → bvec
-(define (merge head tail)
-   (if head
-      (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
-      tail))
-
-(define (rand-block-size rs)
-   (lets ((rs n (rand rs max-block-size)))
-      (values rs (max n 8))))
-
-;; todo: might make sense to grow the initial block size limits as 2^n up to final limit
-;; stream data from port as desired sized blocks (which are deterministic unlike the sizes we happen to read) and close it at eof
-(define (stream-blocks rs port)
-   (lets ((rs first (rand-block-size rs)))
-      (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
-         (let ((block (interact port wanted)))
             (cond
-               ((eof? block) ;; end of stream
-                  (if (not (eq? port stdin)) (close-port port))
-                  (if last (list last) null))
-               ((not block) ;; read error
-                  ;; later carp via whatever logging system is used to stderr
-                  (if (not (eq? port stdin)) (close-port port))
-                  (if last (list last) null))
-               ((eq? (sizeb block) (+ wanted 1))
-                  ;; a block of required (deterministic) size is ready
-                  (lets
-                     ((block (merge last block))
-                      (rs next (rand-block-size rs)))
-                     (pair block (loop rs F next))))
-               (else
-                  (loop rs (merge last block) (- wanted (sizeb block)))))))))
+               ((eq? hd close)
+                  ;; match complete, return with rest of list
+                  (values (reverse (cons close rout)) lst))
+               ((get usual-delims hd F) =>
+                  (λ (next-close)
+                     (lets ((this lst (grow lst next-close null)))
+                        (if lst ;; we didn't run out of data and this is a single tree node
+                           (grow lst close (cons (cons hd this) rout))
+                           ;; we ran out of data. this is a list of partial parses (having the data of 
+                           ;; lst after hd in some form) which we want to preserve as tail
+                           (values (append (reverse rout) (cons hd this)) False)))))
+               (else ;; add one byte to this node
+                  (grow lst close (cons hd rout)))))))
 
-(define (open-sample-port path)
-   (cond
-      ((equal? path "-") stdin)
-      (else (open-input-file path))))
-
-;; todo: make the first block a special case? <- or grow the block limit
-(define (stream-sample rs path)
-   (let ((port (open-sample-port path)))
-      (if port
-         (stream-blocks rs port) ; <- use also for stdin streaming
-         (begin
-            (mail stderr (foldr renderer '(10) (list "Cannot read '" path "' - acting as if it were blank.")))
-            null))))
-
-(define (preread-stdin rs)
-   (force (stream-blocks rs stdin)))
-
-;; if n>1 outputs requested and stdin is a sample, preread all of it to memory
-(define (maybe-preread-stdin rs paths opts)
-   (if (> (get opts 'count F) 1)
-      (let ((files (remove (λ (x) (equal? x "-")) paths))) ;; remove all "-"s (there could be many)
-         (if (= (length files) (length paths)) 
-            files ;; there are no -:s
-            (cons (cons "standard-input" (preread-stdin rs)) files)))
-      paths))
-
-(define (sample-gen rs paths opts)
-   ;; permute once per round
-   (lets
-      ((paths (maybe-preread-stdin rs paths opts))
-       (rs order (random-permutation rs paths)))
-      (let loop ((rs rs) (order order))
+   ;; count how many list nodes are in a tree structure
+   (define (count-nodes lst)
+      (let loop ((lst lst) (n 0))
          (cond
-            ((null? order)
-               (sample-gen rs paths F)) ;; repermute 
-            ((string? (car order)) ;; a path
-               (pair
-                  (cons
-                     (list 'sample (car order)) ;; save sample name to metadata
-                     (λ () (stream-sample rs (car order))))
-                  (loop (pop-rand rs) (cdr order))))
-            (else ;; preread data (when stdin w/ n>1 outputs)
-               (pair (car order)
-                  (loop rs (cdr order))))))))
+            ((null? lst) n)
+            ((pair? (car lst))
+               (loop (cdr lst)
+                  (loop (car lst) (+ n 1))))
+            (else
+               (loop (cdr lst) n)))))
 
-(define (repeat thing n)
-   (let loop ((n n) (out null))
-      (if (eq? n 0)
-         out
-         (loop (- n 1) (cons thing out)))))
+   ;; lst → a list of lists (not counting tails) in lst, when walked recursively, not counting lst itself
+   (define (sublists lst)
+      (let loop ((lst lst) (found null))
+         (if (null? lst) 
+            found
+            (let ((hd (car lst)))
+               (if (pair? hd)
+                  (loop (cdr lst) 
+                     (loop hd (cons hd found)))
+                  (loop (cdr lst) found))))))
 
-(define (repeat-blocks pre n tail)
-   (if (= n 0)
-      (list tail)
-      (pair pre (repeat-blocks pre (- n 1) tail))))
+   (define (pick-sublist rs lst)
+      (let ((subs (sublists lst)))
+         (if (null? subs)
+            (values rs False)
+            (lets ((rs n (rand rs (length subs))))
+               (values rs (lref subs n))))))
 
-(define (rand-length rs)
-   (lets
-      ((rs nbits (rand rs 18))
-       (rs n (rand rs (<< 1 (max nbits 6)))))
-      (values rs n)))
+   ;; replace the node (sub . tail) with (op rs (sub . tail))
+   (define (edit-sublist lst sub op)
+      (if (pair? lst)
+         (if (eq? (car lst) sub)
+            (op lst)
+            (cons (edit-sublist (car lst) sub op)
+                  (edit-sublist (cdr lst) sub op)))
+         lst))
 
-(define (sgen-flat rs paths opts)
-   (let loop ((rs rs))
-      (lets
-         ((rs base (rand rs 256))
-          (rs len (rand-length rs))
-          (blocks (div len avg-block-size)))
-         (pair
-            (cons 
-               (list 'flat base len)
-               (repeat-blocks
-                  (if (> blocks 0)
-                     (list->byte-vector (repeat base avg-block-size))
-                     'nothing)
-                  blocks
-                  (list->byte-vector (repeat base (- len (* blocks avg-block-size))))))
-            (loop rs)))))
+   ;; lst (ff of node → (node → node)) → lst' ; <- could also be done with a recursive-mapn
+   (define (edit-sublists lst opff)
+      (if (pair? lst)
+         (let ((hd (car lst)))
+            (if (pair? hd)
+               (let ((maybe-op (get opff hd F)))
+                  (if maybe-op
+                     (cons (maybe-op (car lst))
+                        (edit-sublists (cdr lst) opff))
+                     (cons (edit-sublists (car lst) opff)
+                        (edit-sublists (cdr lst) opff))))
+               (cons (car lst)
+                  (edit-sublists (cdr lst) opff))))
+         lst))
 
-(define (sgen-rrep rs paths opts)
-   (let loop ((rs rs))
-      (lets
-         ((rs nalpha (rand rs 1024)) ;; alphabet size
-          (rs letters (random-numbers rs 256 nalpha)) ;; alphabet (may have repetition)
-          (alpha (list->vector letters)) ;; index 0-(nalpha-1)
-          (rs len (rand-log rs 10)) ;; block size to repeat
-          (rs poss (random-numbers rs nalpha len))
-          (bytes (map (λ (p) (vec-ref alpha p)) poss))
-          (block (list->byte-vector bytes))
-          (rs n (rand-log rs 6))) ;; repeat block how many times
-         (pair
-            (cons 'rrep (map (λ (p) block) (iota 0 1 n)))
-            (loop rs)))))
+   ;; todo: define reservoir-sampling-style node selection (1, 2 or n nodes)
+   ;; todo: pass 1, partial parse, pass 2, choose nodes, pass3, search and replace by id
+   (define (partial-parse lst)
+      (let loop ((lst lst) (rout null))
+         (if (null? lst)
+            (reverse rout)
+            (lets ((closep (get usual-delims (car lst) F)))
+               (if closep
+                  (lets 
+                     ((hd (car lst))
+                      (this lst (grow (cdr lst) closep null)))
+                     (if lst
+                        (loop lst (cons (cons hd this) rout))
+                        (append (reverse rout) (cons hd this))))
+                  (loop (cdr lst) (cons (car lst) rout)))))))
 
-(define (random-bytes rs n out)
-   (cond
-      ((eq? n 0)
-         (values rs out))
-      ((eq? n 1) ;; get 8 bits
-         (lets ((rs b (rand rs 256)))
-            (random-bytes rs 0 (cons b out))))
-      (else ;; get and split 16  bits
-         (lets ((digit rs (uncons rs F)))
-            (random-bytes rs (- n 2)
-               (ilist (band digit 255) (>> digit 8) out))))))
-
-(define (sgen-random rs paths opts)
-   (let loop ((rs rs))
-      (lets 
-         ((rs len (rand rs 4096))
-          (rs bytes (random-bytes rs len null)))
-         (pair
-            (cons 'random (list (list->byte-vector bytes))) ;; <- could also stream this
-            (loop rs)))))
-
-(define ll-generators
-   (list
-      (cons "sample" sample-gen)   ;; stream data from samples
-      (cons "flat" sgen-flat)      ;; repeat a single value
-      (cons "random" sgen-random)  ;; genrate random data (radamsa -n 100000000000000 -f flip -g random --single | pv | dieharder -g 200 -a)
-      (cons "rrep" sgen-rrep)))
-
-;;; Stream polymerasen ------------------------------------------------
-
-;; todo: once-dec could also also take a cont
-;; run mutafn with prob 1/(ip+n) to block at offset n, or last if out of data
-
-(define (once-dec rs mutafn ll)
-   (lets 
-      ((hd ll (uncons ll F))
-       (rs ip (rand rs 32)))
-      (if hd
-         (let loop ((rs rs) (ll ll) (last hd) (ip ip))
-            (lets ((rs n (rand rs ip)))
-               (if (eq? n 0)
-                  (mutafn (cons last ll))
-                  (lets ((next ll (uncons ll F)))
-                     (if next
-                        (cons last 
-                           (loop rs ll next (+ ip 1)))
-                        (mutafn (list last)))))))
-         ll)))
-
-(define ll-polymerase 
-   (list
-      (rs-fold-node "onced"
-         (λ (rs) (λ (mutagen ll) (once-dec rs mutagen ll))))))
-
-;;; Muxers --------------------------------------------------------------
-
-(define (bigger-first a b)
-   (lets ((sa (sizeb a)) (sb (sizeb b)))
-      (if (< sa sb)
-         (values b sb a sa)
-         (values a sa b sb))))
-
-(define (zip-blocks op all bll)
-   (cond
-      ((null? all) (values all bll))
-      ((null? bll) (values all bll))
-      ((pair? all)
-         (if (pair? bll)
-            (lets 
-               ((a as b bs (bigger-first (car all) (car bll)))
-                (al (byte-vector->list a))
-                (bl (byte-vector->list b))
-                (merged (list->byte-vector (zip op al bl)))) ;; will cut tail of al
-               (values
-                  (if (eq? al bl) ;; unless the tail is a lie
-                     (cons merged (cdr all))
-                     (ilist merged
-                        (list->byte-vector (map (λ (p) (refb a p)) (iota bs 1 as)))
-                        (cdr all)))
-                  bll))
-            (zip-blocks op all (bll))))
-      (else 
-         (zip-blocks op (all) bll))))
-
-(define ll-muxers ;; todo: many to be added in 0.2.1
-   (list
-      (cons "swap" ;; swap streams
-         (λ (rs paths opts)
-            (simple-node "swap"
-               (λ (a b) (values b a)))))
-      (cons "cat" ;; catenate streams
-         (λ (rs paths opts)
-            (simple-node "cat"
-               (λ (a b) (values (lappend a b) null)))))
-      (cons "min" ;; get minimum for a block
-         (λ (rs paths opts)
-            (simple-node "min"
-               (λ (a b) 
-                  (zip-blocks min a b)))))
-      (cons "max" ;; get minimum for a block
-         (λ (rs paths opts)
-            (simple-node "max"
-               (λ (a b) (zip-blocks max a b)))))
-      (cons "avg"
-         (λ (rs paths opts)
-            (simple-node "avg"
-               (λ (a b) (zip-blocks (λ (a b) (>> (+ a b) 1)) a b)))))))
-
-;; mux-step - walk the two lazy streams (whose length we don't know) and apply muxer once 
-;; at some position, and then pass control to cont. blocks of a are emitted as output and 
-;; b is dropped, speeds being roughly equivalent.
-
-; → (cont ll ll)
-(define (mux-step rs all bll muxer ip cont)
-   (define (finish as bs)
+   (define (flatten node tl)
       (cond
-         ((null? as) (cont null bs))
-         ((null? bs) (cont as null))
-         (else 
-            (lets ((as bs (muxer as bs))) 
-               (cont as bs)))))
-   (lets 
-      ((a as (uncons all F))
-       (b bs (uncons bll F)))
+         ((null? node) tl)
+         ((pair? node) (flatten (car node) (flatten (cdr node) tl)))
+         (else (cons node tl))))
+
+   (define (sed-tree-op op)
+      (λ (rs)
+         (λ (ll)
+            (lets
+               ((lst (partial-parse (byte-vector->list (car ll))))
+                ;(_ (if (not (equal? (byte-vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
+                (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
+                (lst (edit-sublist lst sub op)))
+               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
+
+   ;; todo: make these 3 with (sublists → mapping) → (rs → (ll → ...))
+
+   (define (sed-tswap rs)
+      (λ (ll)
+         (call/cc 
+            (λ (ret)
+               (lets
+                  ((skip (λ () (ret ll)))
+                   (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                   (subs (sublists lst)) ;; find all nodes recursively
+                   (subs (if (length< subs 3) (skip) subs))
+                   (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
+                   (toswap (cons (car subs) toswap))
+                   (rs arr (random-permutation rs subs)) ;; permute targets
+                   (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
+                   (lst (edit-sublists lst mapping))) ;; fire
+                  (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+
+   (define (sed-tswap-two rs)
+      (λ (ll)
+         (call/cc
+            (λ (ret)
+               (lets 
+                  ((skip (λ () (ret ll)))
+                   (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                   (subs (sublists lst))
+                   (subs (if (length< subs 3) (skip) subs))
+                   (rs toswap (reservoir-sample rs subs 2))
+                   (a (car toswap)) 
+                   (b (cadr toswap))
+                   ;(_ (show " swapping " (list a 'and b)))
+                   (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
+                   (lst (edit-sublists lst mapping)))
+                  (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+
+   (define (print-rewrite a b)
+      (lets
+         ((a (flatten a null))
+          (b (flatten b null))
+          (sa (list->string a))
+          (sb (list->string b)))
+         (print-to "REWRITE FROM --------------------------------------------------------------------------" stderr)
+         (print-to (or sa (list 'bad 'data a)) stderr)
+         (print "")
+         (print-to "REWRITE TO   --------------------------------------------------------------------------" stderr)
+         (print-to (or sb (list 'bad 'data b)) stderr)
+         (print "")
+         (print-to "---------------------------------------------------------------------------------------" stderr)))
+
+   (define (sed-tswap-one rs)
+      (λ (ll)
+         (call/cc
+            (λ (ret)
+               (lets 
+                  ((skip (λ () (ret ll)))
+                   (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                   (subs (sublists lst))
+                   (subs (if (length< subs 3) (skip) subs))
+                   (rs toswap (reservoir-sample rs subs 2))
+                   (a (car toswap)) 
+                   (b (cadr toswap))
+                   ;(_ (print-rewrite a b))
+                   ;(_ (show " swapping " (list a 'and b)))
+                   (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
+                   (lst (edit-sublist lst a (λ (x) b))))
+                  (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
+
+   ;; duplicate a single branch
+   (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node))))
+
+   ;; duplicate a branch and whatever comes before the next one (if any)
+   (define sed-tdup-run 
+      (sed-tree-op 
+         (λ (node) 
+            (cons (car node)
+               (let loop ((lst (cdr node)))
+                  (if (or (null? lst) (pair? (car lst)))
+                     node
+                     (cons (car lst) (loop (cdr lst)))))))))
+
+   ;; duplicate a branch and whatever comes before the next one (if any)
+   ;; → swapped lst' (returning the original one if out of data)
+   (define (swap-next lst node)
+      (if (null? lst) 
+         (values node lst)
+         (lets ((hd lst lst))
+            (if (pair? hd) ;; drop here
+               (values hd (cons node lst))
+               (lets ((node lst (swap-next lst node)))
+                  (values node (cons hd lst)))))))
+
+   ;; swap a node with the next one at current level (if any)
+   (define sed-tswap-level
+      (sed-tree-op 
+         (λ (node) 
+            (lets ((swapd lst (swap-next (cdr node) (car node))))
+               (cons swapd lst)))))
+
+   (define sed-tdel (sed-tree-op (λ (node) (cdr node))))
+
+
+   ;;; sed-surf utils
+
+   (define (match-prefix lst p)
       (cond
-         ((not a) (finish all bll)) ;; no base stream to mux
-         ((not b) (finish all bll)) ;; no data to mux against
+         ((null? p) True)
+         ((null? lst) False)
+         ((eq? (car lst) (car p))
+            (match-prefix (cdr lst) (cdr p)))
+         (else False)))
+
+   (define (occurrences lst pat)
+      (let loop ((lst lst) (found null) (pos 0))
+         (cond
+            ((null? lst) found)
+            ((match-prefix lst pat)
+               (loop (cdr lst) (cons pos found) (+ pos 1)))
+            (else
+               (loop (cdr lst) found (+ pos 1))))))
+
+   (define (add-suffix ff ls)
+      (if (null? ls)
+         ff
+         (lets ((x ls ls))
+            (put ff x
+               (cons ls (get ff x null))))))
+
+   (define (note-substring occurrences rbytes others)
+      (let ((score (* (- occurrences 1) (* (- (length rbytes) 1) 2))))
+         (if (< score 1)
+            others
+            (cons (cons score rbytes) others))))
+
+   ;; → ((score reverse-bytes ..) ...)
+   (define (radix-walk lsts path n found)
+      (cond
+         ((null? lsts) found)
+         ((null? (cdr lsts)) found)
+         ((eq? n 0) found)
          (else
-            (let loop ((rs rs) (a a) (as as) (b b) (bs bs))
+            (ff-fold
+               (λ (found char tails)
+                  (radix-walk tails (cons char path) (- n 1)
+                     (note-substring (length tails) (cons char path) found)))
+               found
+               (fold add-suffix False lsts)))))
+
+   ;; list of list suffixes
+   (define (suffixen lst)
+      (if (null? lst)
+         null
+         (cons lst (suffixen (cdr lst)))))
+
+   (define (car> a b) (> (car a) (car b)))
+
+   ;; ((i . x) (j . z) ...) n → z
+   (define (priority-pick l n)
+      (let ((m (caar l)))
+         (if (<= n m)
+            (cdar l)
+            (priority-pick (cdr l) (- n m)))))
+
+   ;; todo: make surf max jump size a command line flag
+   (define (frequent-substring rs lst)
+      (lets
+         ((rs max-depth (rand-range rs 4 20)) ; <- 32 gives a max 100ms search
+          (subs (timed "radix-walk" (radix-walk (suffixen lst) null max-depth null)))
+          (subs (timed "sorting" (sort car> subs)))
+          (rs n (rand rs (fold + 0 (map car subs)))))
+         (if (null? subs) ;; <- blank → null
+            (values rs null)
+            (values rs (reverse (priority-pick subs n))))))
+
+   ;; poss quaranteed to have >= 2 elems
+   (define (choose-jump rs poss len)
+      (lets
+         ((rs poss (random-permutation rs poss))
+          (from (car poss))
+          (to (cadr poss)))
+         (if (= (+ from len) (- to 1)) ;; wouldn't change the data
+            (values to from)
+            (values from to))))
+
+   (define (sed-surf rs) ;; jump between two share suffixes in the block
+      (λ (ll)
+         (lets
+            ((lst (byte-vector->list (car ll)))
+             (rs root (frequent-substring rs lst))
+             (poss (occurrences lst root)))
+            ;; a jump list of one element is constructed for blocks with just one byte
+            ;(show "SURF: jumping " (list 'from from 'to to 'using root))
+            (if (> (length poss) 1)
+               (lets 
+                  ((from to (choose-jump rs poss (length root)))
+                   (block (car ll))
+                   (get (λ (p) (refb block p)))
+                   (pre (list->byte-vector (map get (iota 0 1 from))))
+                   (post (list->byte-vector (map get (iota to 1 (sizeb block))))))
+                  (ilist pre post (cdr ll)))
+               ll))))
+
+   (define (sed-stut rs) ;; repeat a section
+      (λ (ll)
+         (lets ((n (sizeb (car ll))))
+            (if (< n 4)
+               ll
+               (lets
+                  ((rs start (rand-range rs 0 (- n 2)))
+                   (rs end (rand-range rs (+ start 1) n))
+                   (pre (map (λ (p) (refb (car ll) p)) (iota 0 1 start)))
+                   (post (map (λ (p) (refb (car ll) p)) (iota end 1 (sizeb (car ll)))))
+                   (stut (list->byte-vector (map (λ (p) (refb (car ll) p)) (iota start 1 end))))
+                   (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
+                   (stuts
+                     (fold
+                        (λ (tl n) (cons stut tl))
+                        (if (null? post)
+                           (cdr ll)
+                           (cons (list->byte-vector post) (cdr ll)))
+                        (iota 0 1 n))))
+                  (if (null? pre)
+                     stuts
+                     (cons (list->byte-vector pre) stuts)))))))
+
+   (define (sed-dec rs) ;; decrement a byte mod 256
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons 
+               (edit-byte-vector (car ll) p 
+                  (λ (old tl) (if (eq? old 0) 255 (cons (- old 1) tl))))
+               (cdr ll)))))
+
+   (define (sed-dup rs) ;; duplicate a byte
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons 
+               (edit-byte-vector (car ll) p 
+                  (λ (old tl) (ilist old old tl)))
+               (cdr ll)))))
+
+   (define (sed-perm rs) ;; permute a few bytes
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons 
+               (edit-byte-vector (car ll) p 
+                  (λ (old tl) 
+                     (lets 
+                        ((lst (cons old tl))
+                         (rs n (rand-range rs 2 20))
+                         (head (take lst n))
+                         (tail (drop lst n))
+                         (rs head (random-permutation rs head)))
+                        (append head tail))))
+               (cdr ll)))))
+
+   ;; todo: stub, parse the (or next first valid, if any) code point and edit separately later
+   (define (sed-utf8-edit rs)
+      (λ (ll)
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (cons 
+               (edit-byte-vector (car ll) p 
+                  (λ (old tl) 
+                     ;; assuming we hit a 6-bit ascii char, make it unnecessarily wide
+                     (ilist #b11000000 (bor old #b10000000) tl)))
+               (cdr ll)))))
+
+   ;; insert UTF-8 that might be mishandled
+   (define (sed-utf8-insert rs)
+      (λ (ll)
+         (lets
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs bytes (rand-elem rs funny-unicode)))
+            (cons
+               (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl))))
+               (cdr ll)))))
+
+   ;; bvec → ((... 10) .. (... [10])), cut after newlines
+   (define (lines bvec)
+      (let loop ((lst (byte-vector->list bvec)) (buff null) (out null))
+         (if (null? lst) 
+            (if (null? buff)
+               (reverse out)
+               (reverse (cons (reverse buff) out)))
+            (lets ((hd lst lst))
+               (if (eq? hd 10) ;; newline
+                  (loop lst null (cons (reverse (cons 10 buff)) out))
+                  (loop lst (cons hd buff) out))))))
+
+   ;; delete a random line 
+   (define (sed-ldel rs)
+      (λ (ll)
+         (lets 
+            ((ls (lines (car ll)))
+             (len (length ls)))
+            (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+               (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
+                  (cons (list->byte-vector (foldr append null (ldel ls a))) (cdr ll)))
+               ll)))) ;; do nothing if we don't get full lines in this block
+
+   (define (sed-ldup rs)
+      (λ (ll)
+         (lets 
+            ((ls (lines (car ll)))
+             (len (length ls)))
+            (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+               (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones 
+                  (cons (list->byte-vector (foldr append null (ledn ls a (λ (x) (cons (car x) x))))) (cdr ll)))
+               ll)))) ;; do nothing if we don't get full lines in this block
+
+   ;; instert a random line to a random position
+   (define (sed-lins rs)
+      (λ (ll)
+         (lets 
+            ((ls (lines (car ll)))
+             (len (length ls)))
+            (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+               (lets 
+                  ((rs from (rand-range rs 1 (- len 1)))
+                   (rs to (rand-range rs 1 (- len 1)))) ;; fixme: growth -> may become too large
+                  (cons (list->byte-vector (foldr append null (lins ls to (lref ls from)))) (cdr ll)))
+               ll))))
+
+   ;; swap two consecutive lines
+   (define (sed-lswapc rs)
+      (λ (ll)
+         (lets 
+            ((ls (lines (car ll)))
+             (len (length ls)))
+            (if (> len 3) ;; we want at least [possibly-partial a b possibly-partial]
+               (lets 
+                  ((rs pos (rand-range rs 1 (- len 2))))
+                  (cons 
+                     (list->byte-vector 
+                        (foldr append null 
+                           (ledn ls pos (λ (x) (ilist (cadr x) (car x) (cddr x))))))
+                     (cdr ll)))
+               ll))))
+   ;; 
+
+   ; (name . starter), starter : rs paths opts → ((info . func) ...)
+   (define ll-mutations   
+      (list
+         ;; byte/bit-oriented
+         (rs-fold-node "drop" sed-drop)
+         (rs-fold-node "inc" sed-inc)
+         (rs-fold-node "dec" sed-dec)
+         (rs-fold-node "dup" sed-dup)
+         (rs-fold-node "flip" sed-flip)
+         (rs-fold-node "perm" sed-perm)
+
+         ;; general purpose
+         (rs-fold-node "stut" sed-stut)
+         (rs-fold-node "surf" sed-surf)
+
+         ;; text / numbers
+         (rs-fold-node "num" sed-num)
+
+         ;; text / UTF-8
+         (rs-fold-node "u8ins" sed-utf8-insert)
+         (rs-fold-node "u8ed" sed-utf8-edit)
+
+         ;; text / partial parse tree 
+         (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
+         (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
+         (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
+         (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level
+         (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
+         (rs-fold-node "ts2" sed-tswap-two) ;; swap 2 pairwise
+         (rs-fold-node "ts1" sed-tswap-one) ;; swap 1 with another one
+
+         ;; text / line-oriented 
+         (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
+         (rs-fold-node "ldup" sed-ldup) ;; clone a line
+         (rs-fold-node "lins" sed-lins) ;; insert a random line
+         (rs-fold-node "lswapc" sed-lswapc) ;; swap two consecutive lines
+
+         (cons "crash" 'mr-crasher)))
+)
+
+;;;
+;;; LL mutation patterns
+;;;
+
+(define-module lib-ll-polymerase
+   (export ll-polymerase)
+
+   ;; todo: other local mutation patterns missing
+
+   (define (once-dec rs mutafn ll)
+      (lets 
+         ((hd ll (uncons ll F))
+          (rs ip (rand rs 32)))
+         (if hd
+            (let loop ((rs rs) (ll ll) (last hd) (ip ip))
                (lets ((rs n (rand rs ip)))
                   (if (eq? n 0)
-                     (finish (cons a as) (cons b bs))
-                     (lets ((rs n (rand rs 2)))
-                        (if (eq? n 0)
-                           (lets ((aa as (uncons as F)))
-                              (if aa
-                                 (pair a (loop rs aa as b bs)) ;; more a follows, emit and continue
-                                 (finish (list a) (cons b bs)))) ;; out of a
-                           (lets ((bb bs (uncons bs F)))
-                              (if bb
-                                 (loop rs a as bb bs) ;; more b follows, drop b an continue
-                                 (loop rs a as b null)))))))))))) ;; out of b, keep last block
+                     (mutafn (cons last ll))
+                     (lets ((next ll (uncons ll F)))
+                        (if next
+                           (cons last 
+                              (loop rs ll next (+ ip 1)))
+                           (mutafn (list last)))))))
+            ll)))
 
-(define (fast-forward ll)
-   (cond
-      ((pair? ll) (fast-forward (cdr ll)))
-      ((null? ll) ll)
-      (else (fast-forward (ll)))))
+   (define ll-polymerase 
+      (list
+         (rs-fold-node "onced"
+            (λ (rs) (λ (mutagen ll) (once-dec rs mutagen ll)))))))
 
-(define (mux-once rs all bll muxer ip)
-   (mux-step rs all bll muxer ip 
-      (λ (a b) 
-         (fast-forward b)   ;; read the b stream to be dropped in order to close the fd
-         a)))
 
-(define ll-muxer-polymerase 
-   (list
-      (rs-fold-node "once" 
-         (λ (rs)
-            (λ (muxer all bll)
-               (lets
-                  ((rs bits (rand rs 8))
-                   (rs ip (rand rs (<< 1 bits)))) ;; inverse probability
-                  (mux-once rs all bll muxer ip)))))))
+
+
+;;;
+;;; LL generators
+;;;
+
+(define-module lib-ll-generators
+
+   (export ll-generators)
+
+   (define max-block-size (* 2 avg-block-size))
+
+   ;; bvec|F bvec → bvec
+   (define (merge head tail)
+      (if head
+         (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
+         tail))
+
+   (define (rand-block-size rs)
+      (lets ((rs n (rand rs max-block-size)))
+         (values rs (max n 8))))
+
+   ;; todo: might make sense to grow the initial block size limits as 2^n up to final limit
+   ;; stream data from port as desired sized blocks (which are deterministic unlike the sizes we happen to read) and close it at eof
+   (define (stream-blocks rs port)
+      (lets ((rs first (rand-block-size rs)))
+         (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
+            (let ((block (interact port wanted)))
+               (cond
+                  ((eof? block) ;; end of stream
+                     (if (not (eq? port stdin)) (close-port port))
+                     (if last (list last) null))
+                  ((not block) ;; read error
+                     ;; later carp via whatever logging system is used to stderr
+                     (if (not (eq? port stdin)) (close-port port))
+                     (if last (list last) null))
+                  ((eq? (sizeb block) (+ wanted 1))
+                     ;; a block of required (deterministic) size is ready
+                     (lets
+                        ((block (merge last block))
+                         (rs next (rand-block-size rs)))
+                        (pair block (loop rs F next))))
+                  (else
+                     (loop rs (merge last block) (- wanted (sizeb block)))))))))
+
+   (define (open-sample-port path)
+      (cond
+         ((equal? path "-") stdin)
+         (else (open-input-file path))))
+
+   ;; todo: make the first block a special case? <- or grow the block limit
+   (define (stream-sample rs path)
+      (let ((port (open-sample-port path)))
+         (if port
+            (stream-blocks rs port) ; <- use also for stdin streaming
+            (begin
+               (mail stderr (foldr renderer '(10) (list "Cannot read '" path "' - acting as if it were blank.")))
+               null))))
+
+   (define (preread-stdin rs)
+      (force (stream-blocks rs stdin)))
+
+   ;; if n>1 outputs requested and stdin is a sample, preread all of it to memory
+   (define (maybe-preread-stdin rs paths opts)
+      (if (> (get opts 'count F) 1)
+         (let ((files (remove (λ (x) (equal? x "-")) paths))) ;; remove all "-"s (there could be many)
+            (if (= (length files) (length paths)) 
+               files ;; there are no -:s
+               (cons (cons "standard-input" (preread-stdin rs)) files)))
+         paths))
+
+   (define (sample-gen rs paths opts)
+      ;; permute once per round
+      (lets
+         ((paths (maybe-preread-stdin rs paths opts))
+          (rs order (random-permutation rs paths)))
+         (let loop ((rs rs) (order order))
+            (cond
+               ((null? order)
+                  (sample-gen rs paths F)) ;; repermute 
+               ((string? (car order)) ;; a path
+                  (pair
+                     (cons
+                        (list 'sample (car order)) ;; save sample name to metadata
+                        (λ () (stream-sample rs (car order))))
+                     (loop (pop-rand rs) (cdr order))))
+               (else ;; preread data (when stdin w/ n>1 outputs)
+                  (pair (car order)
+                     (loop rs (cdr order))))))))
+
+   (define (repeat thing n)
+      (let loop ((n n) (out null))
+         (if (eq? n 0)
+            out
+            (loop (- n 1) (cons thing out)))))
+
+   (define (repeat-blocks pre n tail)
+      (if (= n 0)
+         (list tail)
+         (pair pre (repeat-blocks pre (- n 1) tail))))
+
+   (define (rand-length rs)
+      (lets
+         ((rs nbits (rand rs 18))
+          (rs n (rand rs (<< 1 (max nbits 6)))))
+         (values rs n)))
+
+   (define (sgen-flat rs paths opts)
+      (let loop ((rs rs))
+         (lets
+            ((rs base (rand rs 256))
+             (rs len (rand-length rs))
+             (blocks (div len avg-block-size)))
+            (pair
+               (cons 
+                  (list 'flat base len)
+                  (repeat-blocks
+                     (if (> blocks 0)
+                        (list->byte-vector (repeat base avg-block-size))
+                        'nothing)
+                     blocks
+                     (list->byte-vector (repeat base (- len (* blocks avg-block-size))))))
+               (loop rs)))))
+
+   (define (sgen-rrep rs paths opts)
+      (let loop ((rs rs))
+         (lets
+            ((rs nalpha (rand rs 1024)) ;; alphabet size
+             (rs letters (random-numbers rs 256 nalpha)) ;; alphabet (may have repetition)
+             (alpha (list->vector letters)) ;; index 0-(nalpha-1)
+             (rs len (rand-log rs 10)) ;; block size to repeat
+             (rs poss (random-numbers rs nalpha len))
+             (bytes (map (λ (p) (vec-ref alpha p)) poss))
+             (block (list->byte-vector bytes))
+             (rs n (rand-log rs 6))) ;; repeat block how many times
+            (pair
+               (cons 'rrep (map (λ (p) block) (iota 0 1 n)))
+               (loop rs)))))
+
+   (define (random-bytes rs n out)
+      (cond
+         ((eq? n 0)
+            (values rs out))
+         ((eq? n 1) ;; get 8 bits
+            (lets ((rs b (rand rs 256)))
+               (random-bytes rs 0 (cons b out))))
+         (else ;; get and split 16  bits
+            (lets ((digit rs (uncons rs F)))
+               (random-bytes rs (- n 2)
+                  (ilist (band digit 255) (>> digit 8) out))))))
+
+   (define (sgen-random rs paths opts)
+      (let loop ((rs rs))
+         (lets 
+            ((rs len (rand rs 4096))
+             (rs bytes (random-bytes rs len null)))
+            (pair
+               (cons 'random (list (list->byte-vector bytes))) ;; <- could also stream this
+               (loop rs)))))
+
+   (define ll-generators
+      (list
+         (cons "sample" sample-gen)   ;; stream data from samples
+         (cons "flat" sgen-flat)      ;; repeat a single value
+         (cons "random" sgen-random)  ;; genrate random data (radamsa -n 100000000000000 -f flip -g random --single | pv | dieharder -g 200 -a)
+         (cons "rrep" sgen-rrep))))
+
+
+
+
+
+;;;
+;;; LL muxers
+;;;
+
+(define-module lib-ll-muxers
+
+   (export ll-muxers)
+
+   (define (bigger-first a b)
+      (lets ((sa (sizeb a)) (sb (sizeb b)))
+         (if (< sa sb)
+            (values b sb a sa)
+            (values a sa b sb))))
+
+   (define (zip-blocks op all bll)
+      (cond
+         ((null? all) (values all bll))
+         ((null? bll) (values all bll))
+         ((pair? all)
+            (if (pair? bll)
+               (lets 
+                  ((a as b bs (bigger-first (car all) (car bll)))
+                   (al (byte-vector->list a))
+                   (bl (byte-vector->list b))
+                   (merged (list->byte-vector (zip op al bl)))) ;; will cut tail of al
+                  (values
+                     (if (eq? al bl) ;; unless the tail is a lie
+                        (cons merged (cdr all))
+                        (ilist merged
+                           (list->byte-vector (map (λ (p) (refb a p)) (iota bs 1 as)))
+                           (cdr all)))
+                     bll))
+               (zip-blocks op all (bll))))
+         (else 
+            (zip-blocks op (all) bll))))
+
+   (define ll-muxers ;; todo: many to be added in 0.2.1
+      (list
+         (cons "swap" ;; swap streams
+            (λ (rs paths opts)
+               (simple-node "swap"
+                  (λ (a b) (values b a)))))
+         (cons "cat" ;; catenate streams
+            (λ (rs paths opts)
+               (simple-node "cat"
+                  (λ (a b) (values (lappend a b) null)))))
+         (cons "min" ;; get minimum for a block
+            (λ (rs paths opts)
+               (simple-node "min"
+                  (λ (a b) 
+                     (zip-blocks min a b)))))
+         (cons "max" ;; get minimum for a block
+            (λ (rs paths opts)
+               (simple-node "max"
+                  (λ (a b) (zip-blocks max a b)))))
+         (cons "avg"
+            (λ (rs paths opts)
+               (simple-node "avg"
+                  (λ (a b) (zip-blocks (λ (a b) (>> (+ a b) 1)) a b))))))))
+
+;;;
+;;; LL muxer patterns
+;;;
+
+(define-module lib-ll-muxer-polymerase
+
+   (export ll-muxer-polymerase)
+
+   ;; mux-step - walk the two lazy streams (whose length we don't know) and apply muxer once 
+   ;; at some position, and then pass control to cont. blocks of a are emitted as output and 
+   ;; b is dropped, speeds being roughly equivalent.
+
+   ; → (cont ll ll)
+   (define (mux-step rs all bll muxer ip cont)
+      (define (finish as bs)
+         (cond
+            ((null? as) (cont null bs))
+            ((null? bs) (cont as null))
+            (else 
+               (lets ((as bs (muxer as bs))) 
+                  (cont as bs)))))
+      (lets 
+         ((a as (uncons all F))
+          (b bs (uncons bll F)))
+         (cond
+            ((not a) (finish all bll)) ;; no base stream to mux
+            ((not b) (finish all bll)) ;; no data to mux against
+            (else
+               (let loop ((rs rs) (a a) (as as) (b b) (bs bs))
+                  (lets ((rs n (rand rs ip)))
+                     (if (eq? n 0)
+                        (finish (cons a as) (cons b bs))
+                        (lets ((rs n (rand rs 2)))
+                           (if (eq? n 0)
+                              (lets ((aa as (uncons as F)))
+                                 (if aa
+                                    (pair a (loop rs aa as b bs)) ;; more a follows, emit and continue
+                                    (finish (list a) (cons b bs)))) ;; out of a
+                              (lets ((bb bs (uncons bs F)))
+                                 (if bb
+                                    (loop rs a as bb bs) ;; more b follows, drop b an continue
+                                    (loop rs a as b null)))))))))))) ;; out of b, keep last block
+
+   (define (fast-forward ll)
+      (cond
+         ((pair? ll) (fast-forward (cdr ll)))
+         ((null? ll) ll)
+         (else (fast-forward (ll)))))
+
+   (define (mux-once rs all bll muxer ip)
+      (mux-step rs all bll muxer ip 
+         (λ (a b) 
+            (fast-forward b)   ;; read the b stream to be dropped in order to close the fd
+            a)))
+
+   (define ll-muxer-polymerase
+      (list
+         (rs-fold-node "once" 
+            (λ (rs)
+               (λ (muxer all bll)
+                  (lets
+                     ((rs bits (rand rs 8))
+                      (rs ip (rand rs (<< 1 bits)))) ;; inverse probability
+                     (mux-once rs all bll muxer ip))))))))
+
+
+(import lib-ll-mutations        ll-mutations)        ;; functions to make a mutation on a stream
+(import lib-ll-polymerase       ll-polymerase)       ;; functions to apply mutations on a stream
+(import lib-ll-generators       ll-generators)       ;; functions to make data streams
+(import lib-ll-muxers           ll-muxers)           ;; functions to merge two streams
+(import lib-ll-muxer-polymerase ll-muxer-polymerase) ;; functions to apply stream merges
+
+
 
 ;;; Master polymerase --------------------------------------------------------------
 
@@ -1474,7 +1522,7 @@
                       (have-stdin? (mem equal? paths "-"))
                       (rs (seed->rands seed))
                       (rs gens (start rs ll-generators g-pris paths opts))
-                      (rs fuzs (start rs ll-fuzzers f-pris paths opts))
+                      (rs fuzs (start rs ll-mutations f-pris paths opts))
                       (rs pols (start rs ll-polymerase p-pris paths opts))
                       (fuzs (fuzzer-stream pols fuzs)) ;; fuse available polymerase with stream fuzzers
                       (rs muxs (start rs ll-muxers m-pris paths opts))
