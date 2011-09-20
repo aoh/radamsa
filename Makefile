@@ -47,7 +47,7 @@ todo:
 get-owl:
 	# need to install owl to be able to compile radamsa
 	# this may take a moment depending on your machine
-	git clone http://haltp.org/git/owl-lisp.git
+	-git clone http://haltp.org/git/owl-lisp.git
 	cd owl-lisp && make && sudo make install
 
 deps:
