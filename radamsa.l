@@ -7,7 +7,7 @@
 ;; note, use the precompiled C or binary from downloads instead
 
 ;; todo: make a priority adjustment pass and allow it to pass information back
-;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom
+;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom (in a controlled way)
 ;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3,l*=2
 ;; todo: figure out how to allow looking at stdin data (preread a bit, but how to tell conveniently it cannot be forced further?)
 ;; todo: use -g all,sample=0 to disable sample generator?
@@ -34,6 +34,12 @@
 (import lib-args)
 
 ;; benchmarking & debugging utils
+
+(define (flush-bvecs byte-list tail)
+   (let ((len (length byte-list)))
+      (if (< len 65535)
+         (cons (list->byte-vector byte-list) tail)
+         (error "real flush needed, len " len))))
 
 (define (renderer ob tl) 
    (render render ob tl))
@@ -246,7 +252,7 @@
             comment "Which local mutations to enable? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
-        (polymerase "-p" "--polymerase" has-arg default "onced" 
+        (polymerase "-p" "--polymerase" has-arg default "od=2,nd" ; prefer one mutation per fuzzer 
             comment "Which local mutation patterns to use? (pass help to list options)")
         (muxers "-m" "--muxers" has-arg default "swap=4,cat,min,max,avg" 
             comment "Which stream muxers to use? (pass help to list options)")
@@ -349,9 +355,9 @@
 
 
 
-;;;
+
+
 ;;; LL mutations -----------------------------------------------------------
-;;;
 
 (define-module lib-ll-mutations
 
@@ -565,7 +571,7 @@
             (lets ((rs n (rand rs (length subs))))
                (values rs (lref subs n))))))
 
-   ;; replace the node (sub . tail) with (op rs (sub . tail))
+   ;; replace the node (sub . tail) with (op (sub . tail))
    (define (edit-sublist lst sub op)
       (if (pair? lst)
          (if (eq? (car lst) sub)
@@ -589,8 +595,6 @@
                   (edit-sublists (cdr lst) opff))))
          lst))
 
-   ;; todo: define reservoir-sampling-style node selection (1, 2 or n nodes)
-   ;; todo: pass 1, partial parse, pass 2, choose nodes, pass3, search and replace by id
    (define (partial-parse lst)
       (let loop ((lst lst) (rout null))
          (if (null? lst)
@@ -656,6 +660,44 @@
                    (lst (edit-sublists lst mapping)))
                   (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
 
+   ;; tree stutter buraum
+
+   (define (repeat-path parent child n)
+      (if (< n 2)
+         parent ; <- causes at least 1 extra path to be made, saves one useless replace cycle
+         (edit-sublist parent child
+            (λ (here) (cons (repeat-path parent child (- n 1)) (cdr here))))))
+ 
+   (define (choose-child rs node)
+      (let ((subs (sublists node)))
+         (if (null? subs)
+            (values rs False)
+            (rand-elem rs subs))))
+
+   (define (choose-stutr-nodes rs subs abort)
+      (if (null? subs) 
+         (abort) ;; no child nodes about
+         (lets ((rs childp (choose-child rs (car subs))))
+            (if childp
+               (values rs (car subs) childp)
+               (choose-stutr-nodes rs (cdr subs) abort)))))
+
+   (define (sed-tstut rs)
+      (λ (ll)
+         (call/cc
+            (λ (ret)
+               (lets 
+                  ((skip (λ () (ret ll)))
+                   (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
+                   (subs (sublists lst))
+                   (rs subs (random-permutation rs subs))
+                   (rs parent child (choose-stutr-nodes rs subs ret))
+                   (rs n-reps (rand-log rs 10))
+                   (lst 
+                     (edit-sublist lst child 
+                        (λ (node) (cons (repeat-path parent child n-reps) (cdr node))))))
+                  (flush-bvecs (flatten lst null) (cdr ll)))))))
+
    (define (print-rewrite a b)
       (lets
          ((a (flatten a null))
@@ -685,7 +727,7 @@
                    ;(_ (print-rewrite a b))
                    ;(_ (show " swapping " (list a 'and b)))
                    (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
-                   (lst (edit-sublist lst a (λ (x) b))))
+                   (lst (edit-sublist lst a (λ (node) (cons b (cdr node))))))
                   (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
 
    ;; duplicate a single branch
@@ -719,6 +761,7 @@
             (lets ((swapd lst (swap-next (cdr node) (car node))))
                (cons swapd lst)))))
 
+   ;; delete the node from a tree
    (define sed-tdel (sed-tree-op (λ (node) (cdr node))))
 
 
@@ -963,6 +1006,9 @@
    ; (name . starter), starter : rs paths opts → ((info . func) ...)
    (define ll-mutations   
       (list
+         ;; for testing
+         (rs-fold-node "test" sed-star) ;; <- adds a * character somewhere. for testing distrib and ll polymerase.
+
          ;; byte/bit-oriented
          (rs-fold-node "drop" sed-drop)
          (rs-fold-node "inc" sed-inc)
@@ -990,6 +1036,7 @@
          (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
          (rs-fold-node "ts2" sed-tswap-two) ;; swap 2 pairwise
          (rs-fold-node "ts1" sed-tswap-one) ;; swap 1 with another one
+         (rs-fold-node "tstut" sed-tstut) ;; swap 1 with another one
 
          ;; text / line-oriented 
          (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
@@ -1009,26 +1056,48 @@
 
    ;; todo: other local mutation patterns missing
 
-   (define (once-dec rs mutafn ll)
+   ;; make at least one mutation, with decreasing prob, if ll is nonempty
+   ;; call (cont rs tail) after mutation
+   (define (once-dec rs mutafn ll cont)
       (lets 
          ((hd ll (uncons ll F))
-          (rs ip (rand rs 32)))
+          (rs ip (rand rs 32))) ;; initial inverse mutation probability
          (if hd
             (let loop ((rs rs) (ll ll) (last hd) (ip ip))
                (lets ((rs n (rand rs ip)))
                   (if (eq? n 0)
-                     (mutafn (cons last ll))
+                     (cont rs (mutafn (cons last ll)))
                      (lets ((next ll (uncons ll F)))
                         (if next
                            (cons last 
                               (loop rs ll next (+ ip 1)))
-                           (mutafn (list last)))))))
+                           (cont rs (mutafn (list last))))))))
             ll)))
+
+   (define (k2 a b) b)
+
+   ;; once decreasing
+   (define (od rs)
+      (λ (mutagen ll) 
+         (once-dec rs mutagen ll k2)))
+
+   ;; n mutations, decreasing decreasing probability
+   (define (nd rs)
+      (λ (mutagen ll)
+         (let loop ((rs rs) (ll ll) (ip 1))
+            (once-dec rs mutagen ll
+               (λ (rs ll)
+                  (lets ((rs n (rand rs ip)))
+                     ;(show " - n mutate: " (list n '/ ip))
+                     (cond
+                        ;((eq? n 10) ll) ;; max mutation limit, enable if turns out to be necessar. (maybe in stutr-style stuff)
+                        ((eq? n 0) (loop rs ll (+ ip 1))) ;; keep mutatin
+                        (else ll)))))))) ;; done mutatin
 
    (define ll-polymerase 
       (list
-         (rs-fold-node "onced"
-            (λ (rs) (λ (mutagen ll) (once-dec rs mutagen ll)))))))
+         (rs-fold-node "od" od)
+         (rs-fold-node "nd" nd))))
 
 
 
@@ -1375,20 +1444,19 @@
          (else ;; else keep muxin
             (master-merge rs muxs fuzs lls)))))
 
+;; pick some stream generators and merge them with random muxers and mutators
 (define (master-polymerase rs gens muxs fuzs)
    (lets
       ((rs gens tomux (choose-streams rs gens)) ;; choose some streams to use
        (rs muxs fuzs node (master-merge rs muxs fuzs tomux))) ;; combine them to one stream
-      (pair node  ;; <- data to generate
-         (master-polymerase rs gens muxs fuzs))))
+      (pair node (master-polymerase rs gens muxs fuzs))))
 
-;; a single-stream variant for testing stream fuzzers
+;; like master-polymerase, but always only pick one stream (but possibly many mutators)
 (define (master-polymerase/single-stream rs gens muxs fuzs)
    (lets
       ((this gens (uncons gens F))
        (rs muxs fuzs node (master-merge rs muxs fuzs (list this))))
-      (pair node  ;; <- data to generate
-         (master-polymerase/single-stream rs gens muxs fuzs))))
+      (pair node (master-polymerase/single-stream rs gens muxs fuzs))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -1561,6 +1629,22 @@
          stderr)
       (mail stderr (list 27 91 48 109 10))))
 
+(define (crash-msg) ; $ figlet -f isometric1.flf crash
+   (mail stderr (string->list "
+      ___           ___           ___           ___           ___     
+     /\\  \\         /\\  \\         /\\  \\         /\\  \\         /\\__\\    
+    /::\\  \\       /::\\  \\       /::\\  \\       /::\\  \\       /:/  /    
+   /:/\\:\\  \\     /:/\\:\\  \\     /:/\\:\\  \\     /:/\\ \\  \\     /:/__/     
+  /:/  \\:\\  \\   /::\\~\\:\\  \\   /::\\~\\:\\  \\   _\\:\\~\\ \\  \\   /::\\  \\ ___ 
+ /:/__/ \\:\\__\\ /:/\\:\\ \\:\\__\\ /:/\\:\\ \\:\\__\\ /\\ \\:\\ \\ \\__\\ /:/\\:\\  /\\__\\
+ \\:\\  \\  \\/__/ \\/_|::\\/:/  / \\/__\\:\\/:/  / \\:\\ \\:\\ \\/__/ \\/__\\:\\/:/  /
+  \\:\\  \\          |:|::/  /       \\::/  /   \\:\\ \\:\\__\\        \\::/  / 
+   \\:\\  \\         |:|\\/__/        /:/  /     \\:\\/:/  /        /:/  /  
+    \\:\\__\\        |:|  |         /:/  /       \\::/  /        /:/  /   
+     \\/__/         \\|__|         \\/__/         \\/__/         \\/__/    
+
+"))) 
+
 (define apology 
    '("Radamsa stopped because something bad was about to happen. Sorry."
      "If you want to help fix this, drop by at #radamsa on freenode, file"
@@ -1570,9 +1654,9 @@
 
 ;; todo: cut down a and b representation length if they are too large
 (define (boom err-code a b)
-   (bummer)
+   (crash-msg)
    (for-each (λ (x) (print-to x stderr)) apology)
-   (show "Info: " (list err-code 'a a 'b b)))
+   (print-to (list "Info: " (list 'err-code 'a a 'b b)) stderr))
 
 (λ (args)
    (fork-server 'meta toy-meta)
