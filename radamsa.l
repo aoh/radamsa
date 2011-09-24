@@ -35,11 +35,16 @@
 
 ;; benchmarking & debugging utils
 
+   
 (define (flush-bvecs byte-list tail)
-   (let ((len (length byte-list)))
-      (if (< len 65535)
-         (cons (list->byte-vector byte-list) tail)
-         (error "real flush needed, len " len))))
+   (let loop ((len (length byte-list)) (lst byte-list))
+      (if (< len avg-block-size)
+          (cons (list->byte-vector lst) tail)
+          (let 
+            ((hd (take lst avg-block-size))
+             (tl (drop lst avg-block-size)))
+            (cons (list->byte-vector hd)
+               (loop (- len avg-block-size) tl))))))
 
 (define (renderer ob tl) 
    (render render ob tl))
@@ -248,11 +253,11 @@
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,ldel,ldup,lins,lswapc"
+      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,tstut=4,ldel,ldup,lins,lswapc,tstut"
             comment "Which local mutations to enable? (pass help to list options)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
-        (polymerase "-p" "--polymerase" has-arg default "od=2,nd" ; prefer one mutation per fuzzer 
+        (polymerase "-p" "--polymerase" has-arg default "od=4,nd" ; prefer one mutation per fuzzer 
             comment "Which local mutation patterns to use? (pass help to list options)")
         (muxers "-m" "--muxers" has-arg default "swap=4,cat,min,max,avg" 
             comment "Which stream muxers to use? (pass help to list options)")
@@ -691,7 +696,7 @@
                    (lst (partial-parse (byte-vector->list (car ll)))) ;; (byte|node ...)
                    (subs (sublists lst))
                    (rs subs (random-permutation rs subs))
-                   (rs parent child (choose-stutr-nodes rs subs ret))
+                   (rs parent child (choose-stutr-nodes rs subs skip))
                    (rs n-reps (rand-log rs 10))
                    (lst 
                      (edit-sublist lst child 
