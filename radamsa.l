@@ -107,7 +107,11 @@
 
 ;; functions that get metadata about generated data
 (define (record-meta/stderr n name info len)
-   (mail stderr (foldr renderer '(10) (list " " n ": " name " → " info ": " len "b"))))
+   (mail stderr (foldr renderer '(10) (list n ": " name " -> " len "b"))))
+
+;; functions that get metadata about generated data
+(define (record-meta/verbose-stderr n name info len)
+   (mail stderr (foldr renderer '(10) (list " " n ": " name " " info ": " len "b"))))
 
 (define (string->vec str)
    (list->byte-vector (render render str null)))
@@ -120,7 +124,7 @@
       (λ (ll record-meta)
          ;(record-meta n "" (car ll) "to-be-written/stdout") ;; <- when testing new crash-prone ones
          (lets ((ok? w (send-stream (cdr ll) stdout)))
-            (record-meta n "" (car ll) w)))
+            (record-meta n "stdout" (car ll) w)))
       (get-stdout-fd (+ n 1))))
 
 (define (render-ip bvec)
@@ -1606,7 +1610,12 @@
                            master-polymerase/single-stream
                            master-polymerase))
                       (lls (master rs gens muxs fuzs))
-                      (record-meta (if (get opts 'verbose F) record-meta/stderr record-meta/not))
+                      (record-meta 
+                        (let ((v (get opts 'verbose 0)))
+                           (cond
+                              ((eq? v 0) record-meta/not)
+                              ((eq? v 1) record-meta/stderr)
+                              (else      record-meta/verbose-stderr))))
                       (thunks ;; (thunk ...), calling causes io 
                         (lzip (λ (a b) (λ () (wait 100) (a b record-meta))) ;; <- wait in order to allow some time to write
                            (get opts 'output F)
