@@ -28,7 +28,7 @@
 ;; missing: comma-separated output lists
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
-(define version-str "Radamsa 0.2.2d")
+(define version-str "Radamsa 0.2.2e")
 (define avg-block-size 4096)
 
 (import lib-args)
