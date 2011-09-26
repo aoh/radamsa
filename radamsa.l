@@ -6,6 +6,7 @@
 
 ;; note, use the precompiled C or binary from downloads instead
 
+;; todo: tree swap and stutter should prefer node pairs with same leading byte
 ;; todo: make a priority adjustment pass and allow it to pass information back
 ;; bug: if mutations grow blocks beyond 64KB, list->byte-vector fails and radamsa does a boom (in a controlled way)
 ;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=3,l*=2
@@ -158,7 +159,7 @@
                            ((eq? char 37) ; %
                               (case (car tl)
                                  ((110) (render render nth (cdr tl))) ; %n
-                                 ((102) (render render (get info 'name "anonimasu") (cdr tl))) ; %f
+                                 ;((102) (render render (get info 'name "anonimasu") (cdr tl))) ; %f
                                  (else (error "Unknown pattern in output path: " (list->string (cons char tl))))))
                            (else (cons char tl))))
                      null pat)))
