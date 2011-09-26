@@ -267,7 +267,7 @@
             comment "Which stream muxers to use? (pass help to list options)")
         (muxer-polymerase "-P" "--muxer-polymerase" has-arg default "once" 
             comment "Which muxer mutator patterns to use? (pass help to list options)")
-        (seek "-S" "--seek" has-arg cook ,string->integer check ,(λ (x) (>= x 0))
+        (seek "-S" "--seek" cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip n outputs." default "0") ;; temporarily disabled due to a bug (likely fd leak)
         (single F "--single" comment "Use only one data stream per output."))))
 
