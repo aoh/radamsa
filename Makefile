@@ -48,7 +48,7 @@ get-owl:
 	# this may take a moment depending on your machine
 	-git clone http://haltp.org/git/owl-lisp.git
 	-cd owl-lisp && git pull 
-   cd owl-lisp && make && sudo make install
+	cd owl-lisp && make && sudo make install
 
 deps:
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
