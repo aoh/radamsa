@@ -4,21 +4,12 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-; add sample peeking, which really should have been there from the start of 0.2 since some mutations are now somewhat targeted
-;  - for stdin, *always* read the first block for analysis as in preread
-;     + possibly by always making it a ll, which is partially forced by default and fully if n>1
-;  - ll generators (like sample)
-;     + have the ll-gens always report type on startup
-;     + the default ones are neutral (though binary)
-;     + to decide, fold over generators starting with binary, and swap to textual if someone (samples) suggest that
-;     + use a local heuristic to choose form samples (like random 10 files, first 1KB of data, compute prob of UTF-8-ok)
+;; todo: start completing the view-based mutations
+;; todo: allow enabling fuzzers using regexps
+;; todo: complete the table of fuzzning swap names accordingly
+;; todo: systematic naming, to allow l*, *stut, (t|l)swap, etc
+;; todo: w* for word-level stuff?
 
-;; todo: tree swap and stutter should prefer node pairs with same leading byte
-;; todo: be systematic in naming of fuzzers and allow regexps like -f all,t*=4,l*=2
-;; todo: figure out how to allow looking at stdin data (preread a bit, but how to tell conveniently it cannot be forced further?)
-;; todo: use -g all,sample=0 to disable sample generator?
-;; todo: stream fuzzer: lex perm/drop/ins -> l<name> <- 2-pass autodetect
-;; todo: stream fuzzer: cut section around delimiters and permute some slots (2-pass)
 ;; todo: stream fuzzer: cut&fill with probabilities
 ;; todo: stream fuzzer: local permu transform
 ;; todo: stream muxer: 2-stream permu
@@ -1447,10 +1438,12 @@
 
 ;;; Master polymerase --------------------------------------------------------------
 
-;; grab n streams (1 + one more with 1/3n prob)
+(define stream-iprob 5) ;; 1/n prob of choosing n+1 streams
+
+;; grab some streams from which to derive a case
 (define (choose-streams rs gens)
    (let loop ((rs rs) (gens gens) (taken null))
-      (lets ((rs n (rand rs (* 5 (length taken))))) ;; 1/6 prob to use n>1 sample streams
+      (lets ((rs n (rand rs (* stream-iprob (length taken)))))
          (if (eq? n 0)
             (lets ((this gens (uncons gens F)))
                (loop rs gens (cons this taken)))
