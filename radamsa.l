@@ -4,7 +4,19 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: start completing the view-based mutations
+;; todo: start completing the view-based mutations (aka the matrix of mutation)
+;;
+;; these will have extra quantifiers, but a simple naming convention would make matching nicer
+;;
+;; lens
+;;  |
+;;  v         [e]dit     [c]ut      [d]up     [p]erm  [s]wap   [i]ns     [r]ep      [j]ump  <- mutation themes
+;; [b]yte      be[.]      bc         bd.        bp     bs       bi        br         bj
+;; [s]eq       se[.]      sc         sd.        sp     ss       si        sr         sj
+;; [w]ord       -         -           -         -      -        -         -          - 
+;; [l]ine      le[.]      lc         ld         lp     ls       li        lr         ?     
+;; [t]ree      te[.]      tc         td         tp     ts       ti        tr[.]      ?
+;;  ?
 ;; todo: allow enabling fuzzers using regexps
 ;; todo: complete the table of fuzzning swap names accordingly
 ;; todo: systematic naming, to allow l*, *stut, (t|l)swap, etc
