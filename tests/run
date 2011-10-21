@@ -2,7 +2,7 @@
 
 echo "Testing $@:"
 
-rm tmp/* &> /dev/null
+rm tmp/* > /dev/null 2>&1
 
 fail() {
    echo "ERROR - " $@

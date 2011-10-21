@@ -39,7 +39,7 @@
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
 
-(define version-str "Radamsa 0.2.3a")
+(define version-str "Radamsa 0.2.3b")
 
 (define avg-block-size 4096)
 
@@ -276,9 +276,9 @@
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,tstut=4,ldel,ldup,lins,lswapc,tstut"
+      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "drop,inc,dec,rnd,ins,dup,flip,stut=7,num=9,u8ins=2,perm=3,surf=10,u8ed=2,tdup=4,tdel=4,tdur=4,tswal=4,tswap=4,ts2=4,ts1=4,tstut=4,tstut,ldel=2,ldup=2,lins=2,lswapc=2"
             comment "Which local mutations to enable for textual data? (pass help to list options)")
-        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "drop,inc,dec,dup,flip=8,stut=3,perm,surf=4"
+        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "drop,inc,dec,rnd,ins,dup,flip=8,stut=3,perm,surf=4"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
         (type       "-t" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
@@ -924,6 +924,24 @@
                   (λ (old tl) (if (eq? old 0) 255 (cons (- old 1) tl))))
                (cdr ll)))))
 
+   (define (sed-rnd rs) ;; swap random byte
+      (λ (ll)
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs new (rand rs 256)))
+            (cons 
+               (edit-byte-vector (car ll) p (λ (old tl) (cons new tl)))
+               (cdr ll)))))
+   
+   (define (sed-ins rs) ;; insert random byte
+      (λ (ll)
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs new (rand rs 256)))
+            (cons 
+               (edit-byte-vector (car ll) p (λ (old tl) (ilist new old tl)))
+               (cdr ll)))))
+
    (define (sed-dup rs) ;; duplicate a byte
       (λ (ll)
          (lets ((rs p (rand rs (sizeb (car ll)))))
@@ -1042,6 +1060,8 @@
          (rs-fold-node "inc" sed-inc)
          (rs-fold-node "dec" sed-dec)
          (rs-fold-node "dup" sed-dup)
+         (rs-fold-node "rnd" sed-rnd)
+         (rs-fold-node "ins" sed-ins)
          (rs-fold-node "flip" sed-flip)
          (rs-fold-node "perm" sed-perm)
 
