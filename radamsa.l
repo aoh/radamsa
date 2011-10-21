@@ -276,8 +276,10 @@
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((fuzzers "-f" "--fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,tstut=4,ldel,ldup,lins,lswapc,tstut"
-            comment "Which local mutations to enable? (pass help to list options)")
+      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "drop,inc,dec,dup,flip,stut=3,num=4,u8ins=2,perm=2,surf=4,u8ed,tdup=2,tdel=2,tdur=2,tswal=2,tswap=2,ts2=4,ts1=2,tstut=4,ldel,ldup,lins,lswapc,tstut"
+            comment "Which local mutations to enable for textual data? (pass help to list options)")
+        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "drop,inc,dec,dup,flip=8,stut=3,perm,surf=4"
+            comment "Which local mutations to enable for binary data? (pass help to list options)")
         (type       "-t" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
@@ -1686,7 +1688,8 @@
                       (paths   (maybe-convert-stdin paths seed n))
                       (type    (or (get opts 'type F) (classify-content paths)))
                       ;(_       (print-stderr (list "Data type is " type)))
-                      (f-pris  (split-priorities (get opts 'fuzzers F) opts paths fail))
+                      (fuzzer-selection (if (eq? type 'binary) 'binary-fuzzers 'text-fuzzers))
+                      (f-pris  (split-priorities (get opts fuzzer-selection F) opts paths fail))
                       (g-pris  (split-priorities (get opts 'generators F) opts paths fail))
                       (p-pris  (split-priorities (get opts 'polymerase F) opts paths fail))
                       (m-pris  (split-priorities (get opts 'muxers F) opts paths fail))
