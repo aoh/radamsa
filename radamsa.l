@@ -284,7 +284,7 @@
             comment "Which local mutations to enable for textual data? (pass help to list options)")
         (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
-        (type       "-t" "--type" has-arg cook ,choose-type
+        (type       "-T" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
         (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
