@@ -10,14 +10,15 @@
 ;;
 ;; lens
 ;;  |
-;;  v         [e]dit     [c]ut      [d]up     [p]erm  [s]wap   [i]ns     [r]ep      [j]ump  <- mutation themes
-;; [b]yte      be[.]      bc         bd.        bp     bs       bi        br         bj
-;; [s]eq       se[.]      sc         sd.        sp     ss       si        sr         sj
-;; [w]ord       -         -           -         -      -        -         -          - 
-;; [l]ine      le[.]      lc         ld         lp     ls       li        lr         ?     
-;; [t]ree      te[.]      tc         td         tp     ts       ti        tr[.]      ?
-;;  ?
+;;  v     [e]dit [c]ut [d]up [p]erm [s]wap [i]ns [r]ep [j]ump 
+;; [b]yte    x     x     x     x      o      x      o     o    
+;; [s]eq   
+;; [w]ord  
+;; [l]ine   
+;; [t]ree  
+;;
 ;; todo: allow enabling fuzzers using regexps
+;;   - use the just added string->complete-match-regex
 ;; todo: complete the table of fuzzning swap names accordingly
 ;; todo: systematic naming, to allow l*, *stut, (t|l)swap, etc
 ;; todo: w* for word-level stuff?
@@ -279,9 +280,9 @@
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "drop,inc,dec,rnd,ins,dup,flip,stut=7,num=9,u8ins=2,perm=3,surf=10,u8ed=2,tdup=4,tdel=4,tdur=4,tswal=4,tswap=4,ts2=4,ts1=4,tstut=4,tstut,ldel=2,ldup=2,lins=2,lswapc=2"
+      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "b.*=1"
             comment "Which local mutations to enable for textual data? (pass help to list options)")
-        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "drop,inc,dec,rnd,ins,dup,flip=8,stut=3,perm,surf=4"
+        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
         (type       "-t" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
@@ -335,15 +336,17 @@
 
 ;; str → str | (name . priority)
 (define (try-split-priority str)
-   (lets ((parts (c/=/ str)))
+   (lets 
+      ((parts (c/=/ str))
+       (matcher (car parts)))
       (cond
          ((= (length parts) 1)
             ;; no priority given. default to 1 (lowest).
-            (cons 1 (car parts)))
+            (cons 1 matcher))
          ((= (length parts) 2)
             (let ((pri (string->integer (cadr parts))))
                (if (and pri (> pri 0))
-                  (cons pri (car parts))
+                  (cons pri matcher)
                   str)))
          (else str))))
 
@@ -1058,15 +1061,15 @@
          ;; for testing
          (rs-fold-node "test" sed-star) ;; <- adds a * character somewhere. for testing distrib and ll polymerase.
 
-         ;; byte/bit-oriented
-         (rs-fold-node "drop" sed-drop)
-         (rs-fold-node "inc" sed-inc)
-         (rs-fold-node "dec" sed-dec)
-         (rs-fold-node "dup" sed-dup)
-         (rs-fold-node "rnd" sed-rnd)
-         (rs-fold-node "ins" sed-ins)
-         (rs-fold-node "flip" sed-flip)
-         (rs-fold-node "perm" sed-perm)
+         ;; byte-level mutations
+         (rs-fold-node "bei" sed-inc)   ;; byte edit / increment
+         (rs-fold-node "bed" sed-dec)   ;; byte edit / decrement
+         (rs-fold-node "ber" sed-rnd)   ;; byte edit / randomize
+         (rs-fold-node "bef" sed-flip)  ;; byte edit / flip bit 
+         (rs-fold-node "bc"  sed-drop)  ;; byte cut
+         (rs-fold-node "bd"  sed-dup)   ;; byte dup
+         (rs-fold-node "bp"  sed-perm)  ;; byte perm
+         (rs-fold-node "bi"  sed-ins)   ;; byte insert
 
          ;; general purpose
          (rs-fold-node "stut" sed-stut)
@@ -1533,29 +1536,28 @@
           (total (fold + 0 (map car opts))))
          (values rs (mux (seed->rands seed) opts total)))))
 
-(define (find-module mods name)
-   (cond
-      ((null? mods) F)
-      ((equal? (caar mods) name) (cdar mods))
-      (else (find-module (cdr mods) name))))
+;; warn and exit via error
+(define (no-such-module name mods)
+   (if (not (string-eq? name "help"))
+      (show "I don't have anything matching " name))
+   (error "The valid options are " (map car mods)))
 
 ;; start node streams, each with their own rs, and mux them according to priorities
 ; → rs' ((info . val) ...)
 (define (start rs mods pris paths opts)
    (let loop ((rs rs) (pris pris) (out null))
-      (cond
-         ((null? pris)
-            (make-muxer rs out))
-         ((find-module mods (cdar pris)) =>
-            (λ (modfn)
-               (lets 
-                  ((rs seed (rand rs max-seed))
-                   (nodes (modfn (seed->rands seed) paths opts)))
-                  (loop rs (cdr pris) (cons (cons (caar pris) nodes) out)))))
-         (else
-            (if (not (equal? (cdar pris) "help"))
-               (show "I don't have a module called " (cdar pris))) 
-            (error "Valid options are " (map car mods))))))
+      (if (null? pris)
+         (make-muxer rs out)
+         (lets
+            ((rs seed (rand rs max-seed))
+             (match (string->complete-match-regex (cdar pris)))
+             (matched (keep (λ (node) (match (car node))) mods))
+             (started (map (λ (node) ((cdr node) (seed->rands seed) paths opts)) matched))
+             (started (map (λ (ll) (cons (caar pris) ll)) started))) ;; add the priority
+            ;(print* (list "Started " (map car matched) " for str '" (cdar pris) "' w/ pri " (caar pris)))
+            (if (null? started)
+               (no-such-module (cdar pris) mods)
+               (loop rs (cdr pris) (append started out)))))))
 
 ;; merge muxer polymerase stream and muxer stream to a stream muxer stream
 (define (muxer-stream pols muxs)
