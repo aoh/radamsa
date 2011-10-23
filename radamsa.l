@@ -4,25 +4,10 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: start completing the view-based mutations (aka the matrix of mutation)
-;;
-;; these will have extra quantifiers, but a simple naming convention would make matching nicer
-;;
-;; lens
-;;  |
-;;  v     [e]dit [c]ut [d]up [p]erm [s]wap [i]ns [r]ep [j]ump 
-;; [b]yte    x     x     x     x      o      x      o     o    
-;; [s]eq   
-;; [w]ord  
-;; [l]ine   
-;; [t]ree  
-;;
-;; todo: allow enabling fuzzers using regexps
-;;   - use the just added string->complete-match-regex
-;; todo: complete the table of fuzzning swap names accordingly
 ;; todo: systematic naming, to allow l*, *stut, (t|l)swap, etc
 ;; todo: w* for word-level stuff?
 
+;; fixme: edit-byte-vector calls list->byte-vector
 ;; todo: stream fuzzer: cut&fill with probabilities
 ;; todo: stream fuzzer: local permu transform
 ;; todo: stream muxer: 2-stream permu
@@ -543,6 +528,24 @@
             ((rs p (rand rs (sizeb (car ll))))
              (rs b (rand rs 8)))
             (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor (<< 1 b) old) tl))) (cdr ll)))))
+
+	(define (pump val n lst)
+		(if (eq? n 0) 
+			lst
+			(pump val (- n 1) (cons val lst))))
+
+	(define (sed-byte-repeat rs) ;; repeat a single byte
+      (λ (ll)
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+				 (rs bits (rand rs 21))         ;; 0-20, avg 10
+				 (rs bits (rand rs (+ bits 1))) ;; 0-20, avg 5
+				 (rs n (rand rs (<< 1 bits))))   ;; 0-1MB, avg 16 bytes
+            (cons 
+					(edit-byte-vector (car ll) p 
+						(λ (old tl) 
+							(pump old n (cons old tl))))
+					(cdr ll)))))
 
    ;;; sed-tree-* utils
 
@@ -1069,22 +1072,18 @@
          (rs-fold-node "bc"  sed-drop)  ;; byte cut
          (rs-fold-node "bd"  sed-dup)   ;; byte dup
          (rs-fold-node "bp"  sed-perm)  ;; byte perm
-         (rs-fold-node "bi"  sed-ins)   ;; byte insert
-			                               ;; missing: byte repeat, byte jump 
+         (rs-fold-node "bi"  sed-ins)         ;; byte insert
+         (rs-fold-node "br"  sed-byte-repeat) ;; byte repeat
 
 			;; byte sequence level mutations
          (rs-fold-node "sr" sed-stut)   ;; sequence repeat
          (rs-fold-node "sj" sed-surf)   ;; sequence jump (surf with suffix)
-			                               ;; missing: many
 
-         ;; text / numbers
-         (rs-fold-node "num" sed-num)
-
-         ;; text / UTF-8
-         (rs-fold-node "u8ins" sed-utf8-insert)
-         (rs-fold-node "u8ed" sed-utf8-edit)
-
-;;  v     [e]dit [c]ut [d]up [p]erm [s]wap [i]ns [r]ep [j]ump 
+         ;; text / line-oriented 
+         (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
+         (rs-fold-node "ldup" sed-ldup) ;; clone a line
+         (rs-fold-node "lins" sed-lins) ;; insert a random line
+         (rs-fold-node "lswapc" sed-lswapc) ;; swap two consecutive lines
 
          ;; text / partial parse tree 
          (rs-fold-node "td1" sed-tdup)        ;; tree duplicate 
@@ -1096,11 +1095,12 @@
          (rs-fold-node "tsn" sed-tswap-one)   ;; tree swap (1 node)
          (rs-fold-node "trs"  sed-tstut)      ;; tree repeat (stutter)
 
-         ;; text / line-oriented 
-         (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
-         (rs-fold-node "ldup" sed-ldup) ;; clone a line
-         (rs-fold-node "lins" sed-lins) ;; insert a random line
-         (rs-fold-node "lswapc" sed-lswapc) ;; swap two consecutive lines
+         ;; text / UTF-8
+         (rs-fold-node "ui" sed-utf8-insert) ;; UTF-8 insert
+         (rs-fold-node "ue" sed-utf8-edit)   ;; UTF-8 edit
+
+         ;; text / numbers
+         (rs-fold-node "num" sed-num)
 
          (cons "crash" 'mr-crasher)))
 )
