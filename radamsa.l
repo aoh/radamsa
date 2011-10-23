@@ -280,9 +280,9 @@
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "b.*=1"
+      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "b.*=1,s.*=2,sr=4,u.*=3,l.*=3,t.*=4,num"
             comment "Which local mutations to enable for textual data? (pass help to list options)")
-        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4"
+        (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4,s.*=3,u.*"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
         (type       "-T" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
@@ -1061,7 +1061,7 @@
          ;; for testing
          (rs-fold-node "test" sed-star) ;; <- adds a * character somewhere. for testing distrib and ll polymerase.
 
-         ;; byte-level mutations
+         ;; byte level mutations
          (rs-fold-node "bei" sed-inc)   ;; byte edit / increment
          (rs-fold-node "bed" sed-dec)   ;; byte edit / decrement
          (rs-fold-node "ber" sed-rnd)   ;; byte edit / randomize
@@ -1070,10 +1070,12 @@
          (rs-fold-node "bd"  sed-dup)   ;; byte dup
          (rs-fold-node "bp"  sed-perm)  ;; byte perm
          (rs-fold-node "bi"  sed-ins)   ;; byte insert
+			                               ;; missing: byte repeat, byte jump 
 
-         ;; general purpose
-         (rs-fold-node "stut" sed-stut)
-         (rs-fold-node "surf" sed-surf)
+			;; byte sequence level mutations
+         (rs-fold-node "sr" sed-stut)   ;; sequence repeat
+         (rs-fold-node "sj" sed-surf)   ;; sequence jump (surf with suffix)
+			                               ;; missing: many
 
          ;; text / numbers
          (rs-fold-node "num" sed-num)
@@ -1082,15 +1084,17 @@
          (rs-fold-node "u8ins" sed-utf8-insert)
          (rs-fold-node "u8ed" sed-utf8-edit)
 
+;;  v     [e]dit [c]ut [d]up [p]erm [s]wap [i]ns [r]ep [j]ump 
+
          ;; text / partial parse tree 
-         (rs-fold-node "tdup" sed-tdup) ;; duplicate a branch
-         (rs-fold-node "tdur" sed-tdup-run) ;; duplicate a branch
-         (rs-fold-node "tdel" sed-tdel) ;; delete a branch from the partial parse
-         (rs-fold-node "tswal" sed-tswap-level) ;; swap a node with another one at the same level
-         (rs-fold-node "tswap" sed-tswap) ;; replace tree nodes
-         (rs-fold-node "ts2" sed-tswap-two) ;; swap 2 pairwise
-         (rs-fold-node "ts1" sed-tswap-one) ;; swap 1 with another one
-         (rs-fold-node "tstut" sed-tstut) ;; swap 1 with another one
+         (rs-fold-node "td1" sed-tdup)        ;; tree duplicate 
+         (rs-fold-node "td2" sed-tdup-run)    ;; tree duplicate
+         (rs-fold-node "tc" sed-tdel)         ;; tree cut
+         (rs-fold-node "tsl" sed-tswap-level) ;; tree swap (within level)
+         (rs-fold-node "ts"  sed-tswap)       ;; tree swap
+         (rs-fold-node "tsp" sed-tswap-two)   ;; tree swap (2 pairwise)
+         (rs-fold-node "tsn" sed-tswap-one)   ;; tree swap (1 node)
+         (rs-fold-node "trs"  sed-tstut)      ;; tree repeat (stutter)
 
          ;; text / line-oriented 
          (rs-fold-node "ldel" sed-ldel) ;; swap a node with another one at the same level (make arbitrary swap later)
