@@ -4,7 +4,7 @@
 ;;; Radamsa - a general purpose test data fuzzer
 ;;;
 
-;; todo: systematic naming, to allow l*, *stut, (t|l)swap, etc
+;; todo: stdin preread may block before possibly erroneous command line arguments are handled
 ;; todo: w* for word-level stuff?
 
 ;; fixme: edit-byte-vector calls list->byte-vector
@@ -28,7 +28,7 @@
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
 
-(define version-str "Radamsa 0.2.3b")
+(define version-str "Radamsa 0.2.3c")
 
 (define avg-block-size 4096)
 
@@ -54,6 +54,8 @@
       ((eq? n 0) False)
       ((null? lst) True)
       (else (length< (cdr lst) (- n 1)))))
+
+(define (car> a b) (> (car a) (car b)))
 
 (define (timed-thunk msg thunk)
    (lets
@@ -262,16 +264,19 @@
          (print "The type must be either binary or text")
          F)))
 
+(define (valid-probability? x)
+   (and (number? x) (>= x 0) (< x 1)))
+
 ;; todo: -f | --fuzzers should probably be -m | --mutations, and muxers correspondingly -M | --muxers
 (define advanced-cl-opts
    (append basic-cl-opts
-      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "b.*=1,s.*=2,sr=4,u.*=3,l.*=3,t.*=4,num"
+      `((text-fuzzers "-t" "--text-fuzzers" has-arg default "b.*=1,s.*=2,sr=4,u.*=3,l.*=3,t.*=4,num=8"
             comment "Which local mutations to enable for textual data? (pass help to list options)")
         (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4,s.*=3,u.*"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
         (type       "-T" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
-        (generators "-g" "--generators" has-arg default "sample=50,flat,random" 
+        (generators "-g" "--generators" has-arg default "sample=100,flat,random" 
             comment "Which stream generators to run? (pass help to list options)")
         (polymerase "-p" "--polymerase" has-arg default "od=4,nd" ; prefer one mutation per fuzzer 
             comment "Which local mutation patterns to use? (pass help to list options)")
@@ -281,7 +286,9 @@
             comment "Which muxer mutator patterns to use? (pass help to list options)")
         (seek "-S" "--seek" cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip n outputs." default "0") ;; temporarily disabled due to a bug (likely fd leak)
-        (single F "--single" comment "Use only one data stream per output."))))
+        (multi-prob "-M" "--multi-prob" cook ,(λ (x) (string->number x F)) default "1/12" check ,valid-probability?
+            comment "probability of using multiple data sources to make a single output (0 to always use one)")
+        )))
 
 (define command-line-rules
    (cl-rules advanced-cl-opts))
@@ -512,7 +519,7 @@
          (lets ((rs p (rand rs (sizeb (car ll)))))
             (cons (edit-byte-vector (car ll) p (λ (old tl) (cons 42 tl))) (cdr ll)))))
 
-   (define (sed-drop rs) ;; droa byte
+   (define (sed-drop rs) ;; drop byte
       (λ (ll)
          (lets ((rs p (rand rs (sizeb (car ll)))))
             (cons (edit-byte-vector (car ll) p (λ (old tl) tl)) (cdr ll)))))
@@ -1457,13 +1464,11 @@
 
 ;;; Master polymerase --------------------------------------------------------------
 
-(define stream-iprob 5) ;; 1/n prob of choosing n+1 streams
-
 ;; grab some streams from which to derive a case
-(define (choose-streams rs gens)
+(define (choose-streams rs gens multi-prob)
    (let loop ((rs rs) (gens gens) (taken null))
-      (lets ((rs n (rand rs (* stream-iprob (length taken)))))
-         (if (eq? n 0)
+      (lets ((rs occ? (rand-occurs? rs multi-prob)))
+         (if (or occ? (null? taken))
             (lets ((this gens (uncons gens F)))
                (loop rs gens (cons this taken)))
             (values rs gens taken)))))
@@ -1497,18 +1502,12 @@
             (master-merge rs muxs fuzs lls)))))
 
 ;; pick some stream generators and merge them with random muxers and mutators
-(define (master-polymerase rs gens muxs fuzs)
+(define (master-polymerase rs gens muxs fuzs multi-prob)
    (lets
-      ((rs gens tomux (choose-streams rs gens)) ;; choose some streams to use
+      ((rs gens tomux (choose-streams rs gens multi-prob)) ;; choose some streams to use
+       ;(_ (print-to  (list "Stream count " (length tomux)) stderr)) ;; while testing distributions
        (rs muxs fuzs node (master-merge rs muxs fuzs tomux))) ;; combine them to one stream
-      (pair node (master-polymerase rs gens muxs fuzs))))
-
-;; like master-polymerase, but always only pick one stream (but possibly many mutators)
-(define (master-polymerase/single-stream rs gens muxs fuzs)
-   (lets
-      ((this gens (uncons gens F))
-       (rs muxs fuzs node (master-merge rs muxs fuzs (list this))))
-      (pair node (master-polymerase/single-stream rs gens muxs fuzs))))
+      (pair node (master-polymerase rs gens muxs fuzs multi-prob))))
 
 ; node : rs paths opts → ((info . value) ...)
 
@@ -1548,17 +1547,19 @@
 
 ;; start node streams, each with their own rs, and mux them according to priorities
 ; → rs' ((info . val) ...)
-(define (start rs mods pris paths opts)
+(define (start rs mods pris paths opts note)
    (let loop ((rs rs) (pris pris) (out null))
       (if (null? pris)
-         (make-muxer rs out)
+         (begin
+            (note (list "started: " (sort car> (map (λ (x) (cons (car x) (caadr x))) out))))
+            (make-muxer rs out))
          (lets
             ((rs seed (rand rs max-seed))
              (match (string->complete-match-regex (cdar pris)))
              (matched (keep (λ (node) (match (car node))) mods))
              (started (map (λ (node) ((cdr node) (seed->rands seed) paths opts)) matched))
              (started (map (λ (ll) (cons (caar pris) ll)) started))) ;; add the priority
-            ;(print* (list "Started " (map car matched) " for str '" (cdar pris) "' w/ pri " (caar pris)))
+            (note (list "Started " (map car matched) " for str '" (cdar pris) "' w/ pri " (caar pris)))
             (if (null? started)
                (no-such-module (cdar pris) mods)
                (loop rs (cdr pris) (append started out)))))))
@@ -1649,6 +1650,15 @@
    (mail stderr
       (foldr (λ (a b) (render render a b)) '(10) stuff)))
 
+(define compile-time (time-ms))
+
+(define (print-stderr/time stuff)
+   (mail stderr
+      (foldr 
+         (λ (a b) (render render a b))
+         '(10) 
+         (ilist (- (time-ms) compile-time) ": " stuff))))
+   
 (define (peek-data thing)
    (cond
       ((string? thing) ;; sample path
@@ -1695,7 +1705,28 @@
       ;(print-stderr (list "The data is " verdict " based on scores " scores))
       verdict))
 
+;; verbosity → (args → _), verbosity is number of -v:s given
+(define (debug-printer verbosity)
+   (if (< verbosity 3)
+      (λ (x) x)
+      (λ (x) (print-stderr (cons "debug: " x)))))
+
+;; limiting number of samples if there are much more than we want to generate
+(define (limit-samples rs paths n)
+   (let ((n-samples (length paths)))
+      (cond
+         ((null? paths) ;; not applicable
+            (values rs paths))
+         ((eq? n 1)
+            (lets ((rs n (rand rs n-samples)))
+               (values rs (list (lref paths n)))))
+         ((< (* n 10) n-samples) ;; n << n-samples
+            (reservoir-sample rs paths n))
+         (else
+            (values rs paths)))))
+            
 (define (start-radamsa opts paths)
+   ;(print-stderr/time '("arguments parsed"))
    (call/cc
       (λ (ret)
          (let ((fail (λ (why rval) (print why) (ret rval))))
@@ -1708,38 +1739,51 @@
                   0)
                ((not (get opts 'seed F))
                   ;; make a time-based seed unless one is given explicitly
+                  ;(print-stderr/time '("added seed, restart"))
                   (start-radamsa (add-seed opts) paths))
                (else
                   (lets
                      ((seed (string->seed (get opts 'seed F)))
+                      (rs (seed->rands seed))
+                      (note (debug-printer (get opts 'verbose 0)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (/sample/ (get opts 'generators "")))
                            '("-") paths))
                       (n (get opts 'count F))
+                      ;(_ (print-stderr/time '("limiting samples")))
+                      ;(rs paths (limit-samples rs paths n)) 
+                      ;(_ (print-stderr/time '("limited, converting stdin")))
                       (paths   (maybe-convert-stdin paths seed n))
                       (type    (or (get opts 'type F) (classify-content paths)))
+                      (_ (note (list "data classification is " type)))
                       ;(_       (print-stderr (list "Data type is " type)))
                       (fuzzer-selection (if (eq? type 'binary) 'binary-fuzzers 'text-fuzzers))
+                      ;(_ (print-stderr/time '("starting generators")))
                       (f-pris  (split-priorities (get opts fuzzer-selection F) opts paths fail))
                       (g-pris  (split-priorities (get opts 'generators F) opts paths fail))
                       (p-pris  (split-priorities (get opts 'polymerase F) opts paths fail))
                       (m-pris  (split-priorities (get opts 'muxers F) opts paths fail))
                       (mp-pris (split-priorities (get opts 'muxer-polymerase F) opts paths fail))
                       ;; todo: map sample source generator to samples
-                      (have-stdin? (mem equal? paths "-"))
-                      (rs (seed->rands seed))
-                      (rs gens (start rs ll-generators g-pris paths opts))
-                      (rs fuzs (start rs ll-mutations f-pris paths opts))
-                      (rs pols (start rs ll-polymerase p-pris paths opts))
+                      ;(_ (print-stderr/time '("generators running, checking for stdin")))
+                      ;(_ (print-stderr/time '("generator startup")))
+                      (rs gens (start rs ll-generators g-pris paths opts note))
+                      ;(_ (print-stderr/time '("starting others")))
+                      (rs fuzs (start rs ll-mutations f-pris paths opts note))
+                      (rs pols (start rs ll-polymerase p-pris paths opts note))
                       (fuzs (fuzzer-stream pols fuzs)) ;; fuse available polymerase with stream fuzzers
-                      (rs muxs (start rs ll-muxers m-pris paths opts))
-                      (rs mpol (start rs ll-muxer-polymerase mp-pris paths opts))
+                      (rs muxs (start rs ll-muxers m-pris paths opts note))
+                      (rs mpol (start rs ll-muxer-polymerase mp-pris paths opts note))
                       (muxs (muxer-stream mpol muxs)) ;; fuze available muxer polymerase with muxers
-                      (master 
-                        (if (or (get opts 'single F) have-stdin?)
-                           master-polymerase/single-stream
-                           master-polymerase))
-                      (lls (master rs gens muxs fuzs))
+                      ;(_ (print-stderr/time '("making master")))
+                      (have-stdin? (mem equal? paths "-"))
+                      (multi-prob 
+                        (if have-stdin? 
+                           0 ;; don't use multiple streams when working on-line on stdin
+                           (get opts 'multi-prob F)))
+                      (_ (note (list "multi-prob is " multi-prob)))
+                      (master master-polymerase)
+                      (lls (master rs gens muxs fuzs multi-prob))
                       (record-meta 
                         (let ((v (get opts 'verbose 0)))
                            (cond
@@ -1752,7 +1796,9 @@
                            lls))
                       (thunks (drop thunks (get opts 'seek 0))) ;; fast forward if --seek
                       )
+                     ;(print-stderr/time '("generating data"))
                      (force-and-forget-n thunks n)
+                     ;(print-stderr/time '("done"))
                      0)))))))
 
    
@@ -1795,8 +1841,8 @@
    '("Radamsa stopped because something bad was about to happen. Sorry."
      "If you want to help fix this, drop by at #radamsa on freenode, file"
      "a bug at http://code.google.com/p/ouspg/issues/entry or send email to"
-     "aki.helin@ee.oulu.fi. Adding the following text and possibly"
-     "instructions to reproduce this crash will help."))
+     "aki.helin@ee.oulu.fi. Adding the following text and instructions how"
+     "to reproduce this bug will help."))
 
 ;; todo: cut down a and b representation length if they are too large
 (define (boom err-code a b)
@@ -1805,6 +1851,7 @@
    (print-to (list "Info: " (list 'err-code 'a a 'b b)) stderr))
 
 (λ (args)
+   ;(print-stderr/time '("lisp side running"))
    (fork-server 'meta toy-meta)
    (fork-linked-server 'radamsa
       (λ () (process-arguments (cdr args) command-line-rules usage-text start-radamsa)))
