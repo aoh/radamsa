@@ -12,7 +12,7 @@ echo -n "("
 for round in $(ol -e '(iota 0 1 20)')
 do
    echo -n "-"
-   SEED=`cat /dev/urandom | base64 -w 32  | head -n 1`
+   SEED=`cat -v /dev/urandom | head -n 1 | sed -e 's/[^0-9]//g' -e 's/^/1/'`
    FIRST=`$@ -n $NFILES -o - -s "$SEED" $SAMPLES > det-$$-1`
    SECOND=`$@ -n $NFILES -o - -s "$SEED" $SAMPLES > det-$$-2`
 
