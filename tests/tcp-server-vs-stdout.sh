@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 fail() {
    echo "ERROR - " $@
@@ -9,7 +9,7 @@ mkdir -p tmp
 
 SAMPLES=tests/*
 NFILES=100
-SEED=$RANDOM
+SEED=`cat -v /dev/urandom | head -n 1 | sed -e 's/[^0-9]//g' -e 's/^/1/'`
 
 $@ -o - --seed $SEED -n $NFILES $SAMPLES > tmp/stdout-$$
 

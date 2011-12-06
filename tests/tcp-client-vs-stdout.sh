@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # check that what is sent to host/port over tcp matches what comes out of stdout
 
@@ -15,7 +15,7 @@ NFILES=10
 echo -n "("
 for foo in $(ol -e "(iota 0 1 $NFILES)")
 do
-   SEED=$RANDOM
+   SEED=`cat -v /dev/urandom | head -n 1 | sed -e 's/[^0-9]//g' -e 's/^/1/'`
    echo -n "-"
    $@ --seed $SEED $SAMPLES > tmp/stdout-$$
    $@ -o 127.0.0.1:31337 --seed $SEED $SAMPLES 2> tmp/radamsa-$$ & 

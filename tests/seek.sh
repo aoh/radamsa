@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # TODO: one would think runa > foo; runb >> foo; runc >> foo works when 
 # making the files separately, but apparently it doesn't. examine later!
@@ -16,7 +16,7 @@ echo -n "("
 for round in $(ol -e "(iota 0 1 10)")
 do
    echo -n "-"
-   SEED=$RANDOM # bashism
+   SEED=`cat -v /dev/urandom | head -n 1 | sed -e 's/[^0-9]//g' -e 's/^/1/'`
    $@ -n 3 -s $SEED $SAMPLES > tmp/abc # make 3 at once
    $@ -S 0 -s $SEED $SAMPLES > tmp/a # make 1 at offset 0
    $@ -S 1 -s $SEED $SAMPLES > tmp/b # make 1 at offset 1

@@ -19,3 +19,5 @@ do
    cmp det-$$-1 det-$$-2 || fail "sums differ $FIRST $SECOND seed $SEED"
 done
 echo -n ") "
+
+rm det-$$-*
