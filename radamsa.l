@@ -215,7 +215,7 @@
    (cond
       ((equal? str "-")
          (get-stdout-fd 1))
-      ((/^:[0-9]+$/ str)
+      ((m/^:[0-9]+$/ str)
          (let ((port (string->integer (s/^:// str))))
             (if (and port (>= port 0) (< port 65536))
                (let ((clis (tcp-clients port)))
@@ -225,7 +225,7 @@
                (begin
                   (show "Bad port " port)
                   False))))
-      ((/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
+      ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
          (lets
             ((ip-port (c/:/ str)) ;; todo: later these become 2-valued functions
              (port (string->integer (cadr ip-port)))
@@ -252,6 +252,7 @@
      (seed "-s" "--seed" has-arg comment "Random seed (any string).")
      (verbose "-v" "--verbose" comment "Be verbose when running.")
      (version "-V" "--version" comment "Show version information.")
+     (list-fuzzers "-L" "--list-fuzzers" comment "Show a list of fuzzers, muxers and streamers.")
      (examples "-E"  "--examples" comment "Show usage examples.")
      (advanced "-H"  "--big-help" comment "Show more options.")
 ))
@@ -1541,8 +1542,7 @@
 
 ;; warn and exit via error
 (define (no-such-module name mods)
-   (if (not (string-eq? name "help"))
-      (show "I don't have anything matching " name))
+   (show "I don't have anything matching " name)
    (error "The valid options are " (map car mods)))
 
 ;; start node streams, each with their own rs, and mux them according to priorities
@@ -1741,13 +1741,16 @@
                   ;; make a time-based seed unless one is given explicitly
                   ;(print-stderr/time '("added seed, restart"))
                   (start-radamsa (add-seed opts) paths))
+               ((getf opts 'list-fuzzers)
+                  (print "ohai lol")
+                  0)
                (else
                   (lets
                      ((seed (string->seed (get opts 'seed F)))
                       (rs (seed->rands seed))
                       (note (debug-printer (get opts 'verbose 0)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
-                        (if (and (null? paths) (/sample/ (get opts 'generators "")))
+                        (if (and (null? paths) (m/sample/ (get opts 'generators "")))
                            '("-") paths))
                       (n (get opts 'count F))
                       ;(_ (print-stderr/time '("limiting samples")))
