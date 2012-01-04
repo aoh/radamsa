@@ -28,7 +28,7 @@
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
 
-(define version-str "Radamsa 0.2.3c")
+(define version-str "Radamsa 0.2.3")
 
 (define avg-block-size 4096)
 
@@ -252,7 +252,6 @@
      (seed "-s" "--seed" has-arg comment "Random seed (any string).")
      (verbose "-v" "--verbose" comment "Be verbose when running.")
      (version "-V" "--version" comment "Show version information.")
-     (list-fuzzers "-L" "--list-fuzzers" comment "Show a list of fuzzers, muxers and streamers.")
      (examples "-E"  "--examples" comment "Show usage examples.")
      (advanced "-H"  "--big-help" comment "Show more options.")
 ))
@@ -275,6 +274,7 @@
             comment "Which local mutations to enable for textual data? (pass help to list options)")
         (binary-fuzzers "-b" "--binary-fuzzers" has-arg default "b.*=4,s.*=3,u.*"
             comment "Which local mutations to enable for binary data? (pass help to list options)")
+        (list-fuzzers "-L" "--list-fuzzers" comment "Show a list of mutations, muxers and streamers.")
         (type       "-T" "--type" has-arg cook ,choose-type
             comment "choose manually what the data looks like (text or binary)")
         (generators "-g" "--generators" has-arg default "sample=100,flat,random" 
@@ -354,7 +354,7 @@
             (for-each (λ (x) (show "Bad module selection: " x)) bads)
             (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
             (print "For example -e foo,bar,baz=2 will use baz about as often as foo and bar combined.")
-            (print "Use $ radamsa -e help to list options")
+            (print "Use $ radamsa -L to list options")
             (fail False)))))
 
 (define (iterate thing)
@@ -1724,7 +1724,20 @@
             (reservoir-sample rs paths n))
          (else
             (values rs paths)))))
-            
+ 
+(define (print-options)
+   (print
+"These are the options accepted by manual mutation selections. This is
+mainly useful for testing and debugging. Normally you should just 
+use the default automatic settings. You can see the default settings
+with $ radamsa --big-help.")
+   (show " - stream mutations: " (map car ll-mutations))
+   (show " - mutation patterns: " (map car ll-polymerase))
+   (show " - generators: " (map car ll-generators))
+   (show " - muxers: " (map car ll-muxers))
+   (show " - muxer patterns: " (map car ll-muxer-polymerase)))
+   
+
 (define (start-radamsa opts paths)
    ;(print-stderr/time '("arguments parsed"))
    (call/cc
@@ -1742,7 +1755,7 @@
                   ;(print-stderr/time '("added seed, restart"))
                   (start-radamsa (add-seed opts) paths))
                ((getf opts 'list-fuzzers)
-                  (print "ohai lol")
+                  (print-options)
                   0)
                (else
                   (lets
