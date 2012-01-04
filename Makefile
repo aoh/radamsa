@@ -50,6 +50,13 @@ get-owl:
 	-cd owl-lisp && git pull 
 	cd owl-lisp && make && sudo make install
 
+# standalone build for shipping
+standalone:
+	-rm radamsa.c # likely old version
+	make radamsa.c
+   # compile without seccomp and use of syscall
+	diet gcc -DNO_SECCOMP -O3 -Wall -o bin/radamsa radamsa.c
+	
 deps:
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
 	which ol || make get-owl
@@ -58,4 +65,4 @@ uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/radamsa || echo "no radamsa"
 	rm $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz || echo "no manpage"
 
-.PHONY: todo you install clean test bytecode uninstall get-owl
+.PHONY: todo you install clean test bytecode uninstall get-owl standalone
