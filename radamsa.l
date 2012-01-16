@@ -14,7 +14,7 @@
 
 (define avg-block-size 4096)
 
-(import lib-args)
+(import-old lib-args)
 
 ;; benchmarking & debugging utils
    
@@ -1437,11 +1437,11 @@
                      (mux-once rs all bll muxer ip))))))))
 
 
-(import lib-ll-mutations        ll-mutations)                 ;; functions to make a mutation on a stream
-(import lib-ll-polymerase       ll-polymerase)                ;; functions to apply mutations on a stream
-(import lib-ll-generators       ll-generators stream-blocks)  ;; functions to make data streams
-(import lib-ll-muxers           ll-muxers)                    ;; functions to merge two streams
-(import lib-ll-muxer-polymerase ll-muxer-polymerase)          ;; functions to apply stream merges
+(import-old lib-ll-mutations        ll-mutations)                 ;; functions to make a mutation on a stream
+(import-old lib-ll-polymerase       ll-polymerase)                ;; functions to apply mutations on a stream
+(import-old lib-ll-generators       ll-generators stream-blocks)  ;; functions to make data streams
+(import-old lib-ll-muxers           ll-muxers)                    ;; functions to merge two streams
+(import-old lib-ll-muxer-polymerase ll-muxer-polymerase)          ;; functions to apply stream merges
 
 
 
