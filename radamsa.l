@@ -14,7 +14,7 @@
 
 (define avg-block-size 4096)
 
-(import-old lib-args)
+(import (owl args))
 
 ;; benchmarking & debugging utils
    
@@ -27,9 +27,6 @@
              (tl (drop lst avg-block-size)))
             (cons (list->byte-vector hd)
                (loop (- len avg-block-size) tl))))))
-
-(define (renderer ob tl) 
-   (render render ob tl))
 
 (define  (length< lst n)
    (cond
@@ -45,7 +42,7 @@
        (res (thunk))
        (elapsed (- (time-ms) pre)))
       (mail stderr
-         (foldr renderer '(10) 
+         (foldr render '(10) 
             (list "BENCH: " msg ": " elapsed "ms")))
       res))
 
@@ -91,14 +88,14 @@
 
 ;; functions that get metadata about generated data
 (define (record-meta/stderr n name info len)
-   (mail stderr (foldr renderer '(10) (list n ": " name " -> " len "b"))))
+   (mail stderr (foldr render '(10) (list n ": " name " -> " len "b"))))
 
 ;; functions that get metadata about generated data
 (define (record-meta/verbose-stderr n name info len)
-   (mail stderr (foldr renderer '(10) (list " " n ": " name " " info ": " len "b"))))
+   (mail stderr (foldr render '(10) (list " " n ": " name " " info ": " len "b"))))
 
 (define (string->vec str)
-   (list->byte-vector (render render str null)))
+   (list->byte-vector (render str null)))
 
 (define (record-meta/not n name info len) 42)
 
@@ -115,15 +112,15 @@
    (runes->string
       (foldr
          (λ (byte tl)
-            (render render byte (if (null? tl) tl (cons 46 tl))))
+            (render byte (if (null? tl) tl (cons 46 tl))))
          null bvec)))
 
 (define (render-ip-port bvec port)
    (runes->string
       (foldr
          (λ (byte tl)
-            (render render byte (if (null? tl) tl (cons 46 tl))))
-         (cons 58 (render render port null))
+            (render byte (if (null? tl) tl (cons 46 tl))))
+         (cons 58 (render port null))
          bvec)))
 
 ;; todo: parameterize writers to take the meta recorder
@@ -140,8 +137,8 @@
                               (cons char tl))
                            ((eq? char 37) ; %
                               (case (car tl)
-                                 ((110) (render render nth (cdr tl))) ; %n
-                                 ;((102) (render render (get info 'name "anonimasu") (cdr tl))) ; %f
+                                 ((110) (render nth (cdr tl))) ; %n
+                                 ;((102) (render (get info 'name "anonimasu") (cdr tl))) ; %f
                                  (else (error "Unknown pattern in output path: " (list->string (cons char tl))))))
                            (else (cons char tl))))
                      null pat)))
@@ -290,13 +287,14 @@
             (close-port fd)
             (if (vector? data)
                (list->string 
-                  (render render (fold (λ (n d) (+ d (<< n 8))) 0 data) null))
+                  ;; here?
+                  (render (vec-fold (λ (n d) (+ d (<< n 8))) 0 data) null))
                False))
          False)))
 
 ;; () → string (decimal number)
 (define (time-seed)
-   (list->string (render render (time-ms) null)))
+   (list->string (render (time-ms) null)))
 
 ;; get a seed if none was given explicitly (use /dev/urandom or current time in ms)
 (define (add-seed opts)
@@ -306,7 +304,7 @@
 ;; str → integer
 (define (string->seed str)
    (if (string? str)
-      (fold (λ (seed digit) (* (+ digit 1) (+ seed 1))) 1 (str-iter str))
+      (lfold (λ (seed digit) (* (+ digit 1) (+ seed 1))) 1 (str-iter str))
       (error "bad seed: " str)))
 
 ;; str → str | (name . priority)
@@ -368,10 +366,6 @@
 
 ;;; LL mutations -----------------------------------------------------------
 
-(define-module lib-ll-mutations
-
-   (export ll-mutations)
-
    ;; todo: add zero width joiners, different length leading blank padding bytes etc
    (define funny-unicode
       (list->tuple
@@ -390,7 +384,7 @@
                (list 251 238 40 255) (list 132 49 149 51))
             (map ;; some valid points and ranges
                (λ (codepoint)
-                  (render render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
+                  (render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
                (fold
                (λ (tl node)
                      (if (pair? node) ;; inclusive range
@@ -482,8 +476,8 @@
                   (if (eq? which 0) ;; i won
                      (lets
                         ((rs new (mutate-num rs valp))
-                         (new-lst (render render new tail)))
-                        (values rs -1 (render render new tail)))
+                         (new-lst (render new tail)))
+                        (values rs -1 (render new tail)))
                      (values rs (- which 1)
                         (copy-range lst lstp tail))))
                (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
@@ -1093,14 +1087,12 @@
          (rs-fold-node "num" sed-num)
 
          (cons "crash" 'mr-crasher)))
-)
+
 
 ;;;
 ;;; LL mutation patterns
 ;;;
 
-(define-module lib-ll-polymerase
-   (export ll-polymerase)
 
    ;; todo: other local mutation patterns missing
 
@@ -1145,7 +1137,7 @@
    (define ll-polymerase 
       (list
          (rs-fold-node "od" od)
-         (rs-fold-node "nd" nd))))
+         (rs-fold-node "nd" nd)))
 
 
 
@@ -1154,12 +1146,6 @@
 ;;; LL generators
 ;;;
 
-(define-module lib-ll-generators
-
-   (export 
-      ll-generators
-      stream-sample
-      stream-blocks)
 
    (define max-block-size (* 2 avg-block-size))
 
@@ -1208,7 +1194,7 @@
          (if port
             (stream-blocks rs port) ; <- use also for stdin streaming
             (begin
-               (mail stderr (foldr renderer '(10) (list "Cannot read '" path "' - acting as if it were blank.")))
+               (mail stderr (foldr render '(10) (list "Cannot read '" path "' - acting as if it were blank.")))
                null))))
 
    ;; v all these go to an initial fold over the samples and always make the stdin stream node 
@@ -1305,7 +1291,7 @@
          (cons "sample" sgen-sample)   ;; stream data from samples
          (cons "flat" sgen-flat)      ;; repeat a single value
          (cons "random" sgen-random)  ;; genrate random data (radamsa -n 100000000000000 -f flip -g random --single | pv | dieharder -g 200 -a)
-         (cons "rrep" sgen-rrep))))
+         (cons "rrep" sgen-rrep)))
 
 
 
@@ -1315,9 +1301,6 @@
 ;;; LL muxers
 ;;;
 
-(define-module lib-ll-muxers
-
-   (export ll-muxers)
 
    (define (bigger-first a b)
       (lets ((sa (sizeb a)) (sb (sizeb b)))
@@ -1369,15 +1352,12 @@
          (cons "avg"
             (λ (rs paths opts)
                (simple-node "avg"
-                  (λ (a b) (zip-blocks (λ (a b) (>> (+ a b) 1)) a b))))))))
+                  (λ (a b) (zip-blocks (λ (a b) (>> (+ a b) 1)) a b)))))))
 
 ;;;
 ;;; LL muxer patterns
 ;;;
 
-(define-module lib-ll-muxer-polymerase
-
-   (export ll-muxer-polymerase)
 
    ;; mux-step - walk the two lazy streams (whose length we don't know) and apply muxer once 
    ;; at some position, and then pass control to cont. blocks of a are emitted as output and 
@@ -1434,14 +1414,14 @@
                   (lets
                      ((rs bits (rand rs 8))
                       (rs ip (rand rs (<< 1 bits)))) ;; inverse probability
-                     (mux-once rs all bll muxer ip))))))))
+                     (mux-once rs all bll muxer ip)))))))
 
 
-(import-old lib-ll-mutations        ll-mutations)                 ;; functions to make a mutation on a stream
-(import-old lib-ll-polymerase       ll-polymerase)                ;; functions to apply mutations on a stream
-(import-old lib-ll-generators       ll-generators stream-blocks)  ;; functions to make data streams
-(import-old lib-ll-muxers           ll-muxers)                    ;; functions to merge two streams
-(import-old lib-ll-muxer-polymerase ll-muxer-polymerase)          ;; functions to apply stream merges
+;(import-old lib-ll-mutations        ll-mutations)                 ;; functions to make a mutation on a stream
+;(import-old lib-ll-polymerase       ll-polymerase)                ;; functions to apply mutations on a stream
+;(import-old lib-ll-generators       ll-generators stream-blocks)  ;; functions to make data streams
+;(import-old lib-ll-muxers           ll-muxers)                    ;; functions to merge two streams
+;(import-old lib-ll-muxer-polymerase ll-muxer-polymerase)          ;; functions to apply stream merges
 
 
 
@@ -1630,14 +1610,14 @@
 
 (define (print-stderr stuff)
    (mail stderr
-      (foldr (λ (a b) (render render a b)) '(10) stuff)))
+      (foldr (λ (a b) (render a b)) '(10) stuff)))
 
 (define compile-time (time-ms))
 
 (define (print-stderr/time stuff)
    (mail stderr
       (foldr 
-         (λ (a b) (render render a b))
+         (λ (a b) (render a b))
          '(10) 
          (ilist (- (time-ms) compile-time) ": " stuff))))
    
