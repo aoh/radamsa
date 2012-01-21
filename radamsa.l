@@ -1772,7 +1772,7 @@ with $ radamsa --big-help.")
                         (lzip (λ (a b) (λ () (wait 100) (a b record-meta))) ;; <- wait in order to allow some time to write
                            (get opts 'output F)
                            lls))
-                      (thunks (drop thunks (get opts 'seek 0))) ;; fast forward if --seek
+                      (thunks (ldrop thunks (get opts 'seek 0))) ;; fast forward if --seek
                       )
                      ;(print-stderr/time '("generating data"))
                      (force-and-forget-n thunks n)
