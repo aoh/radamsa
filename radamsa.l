@@ -10,7 +10,7 @@
 
 ;; fuzzer node info → ff of (name → str, description → text, meta → meta)
 
-(define version-str "Radamsa 0.2.3")
+(define version-str "Radamsa 0.2.3p1")
 
 (define avg-block-size 4096)
 
@@ -30,8 +30,8 @@
 
 (define  (length< lst n)
    (cond
-      ((eq? n 0) False)
-      ((null? lst) True)
+      ((eq? n 0) #false)
+      ((null? lst) #true)
       (else (length< (cdr lst) (- n 1)))))
 
 (define (car> a b) (> (car a) (car b)))
@@ -63,7 +63,7 @@
 (define (car> a b) (> (car a) (car b)))
 
 (define (pop-rand rs)
-   (lets ((digit rs (uncons rs F))) rs))
+   (lets ((digit rs (uncons rs #false))) rs))
 
 ;; force and send a stream to a port
 (define (mail-blocks str port n)
@@ -83,8 +83,8 @@
    (let ((res (mail-blocks data port 0)))
       (flush-port port) ; <- only necessary for stdout, since others are autoflushed on close soon
       (if res
-         (values True res)
-         (values False False))))
+         (values #true res)
+         (values #false #false))))
 
 ;; functions that get metadata about generated data
 (define (record-meta/stderr n name info len)
@@ -149,7 +149,7 @@
                (lets ((ok? written (send-stream ll port)))
                   (if ok?
                      (record-meta nth path info written)
-                     (record-meta nth path info False))
+                     (record-meta nth path info #false))
                   (close-port port))
                (error "Cannot write to " path))))))
 
@@ -189,7 +189,7 @@
              (ok? np (blocks->socket (cdr node) fd))) ; <- closes fd, not blocks->fd due to win32 incompability
             (record-meta nth (render-ip ip) (car node) np)))))
 
-;; str → ((info . fd) ...) | False
+;; str → ((info . fd) ...) | #false
 (define (make-output-stream str)
    (cond
       ((equal? str "-")
@@ -200,10 +200,10 @@
                (let ((clis (tcp-clients port)))
                   (if clis
                      (lmap serve-node (lzip cons (lnums 1) clis))
-                     False))
+                     #false))
                (begin
                   (show "Bad port " port)
-                  False))))
+                  #false))))
       ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
          (lets
             ((ip-port (c/:/ str)) ;; todo: later these become 2-valued functions
@@ -215,7 +215,7 @@
                   null)
                ((not ((in-range? 0 65535) port))
                   (show "Bad port: " port)
-                  False)
+                  #false)
                (else
                   (lmap (make-tcp-connection (list->vector addr) port)
                      (lnums 1))))))
@@ -241,7 +241,7 @@
       ((equal? str "text") 'text)
       (else 
          (print "The type must be either binary or text")
-         F)))
+         #false)))
 
 (define (valid-probability? x)
    (and (number? x) (>= x 0) (< x 1)))
@@ -266,7 +266,7 @@
             comment "Which muxer mutator patterns to use? (pass help to list options)")
         (seek "-S" "--seek" cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip n outputs." default "0") ;; temporarily disabled due to a bug (likely fd leak)
-        (multi-prob "-M" "--multi-prob" cook ,(λ (x) (string->number x F)) default "1/12" check ,valid-probability?
+        (multi-prob "-M" "--multi-prob" cook ,(λ (x) (string->number x #false)) default "1/12" check ,valid-probability?
             comment "probability of using multiple data sources to make a single output (0 to always use one)")
         )))
 
@@ -281,7 +281,7 @@
 
 ;; () → string
 (define (urandom-seed)
-   (let ((fd (open-input-file "/dev/urandom"))) ;; False if not there
+   (let ((fd (open-input-file "/dev/urandom"))) ;; #false if not there
       (if fd
          (let ((data (interact fd 8)))
             (close-port fd)
@@ -289,8 +289,8 @@
                (list->string 
                   ;; here?
                   (render (vec-fold (λ (n d) (+ d (<< n 8))) 0 data) null))
-               False))
-         False)))
+               #false))
+         #false)))
 
 ;; () → string (decimal number)
 (define (time-seed)
@@ -335,7 +335,7 @@
             (print "Modules selection is a comma-separated list of module names optionally followed by weights.")
             (print "For example -e foo,bar,baz=2 will use baz about as often as foo and bar combined.")
             (print "Use $ radamsa -L to list options")
-            (fail False)))))
+            (fail #false)))))
 
 (define (iterate thing)
    (pair thing (iterate thing)))
@@ -415,8 +415,8 @@
 
    (define (digit-val d)
       (cond
-         ((lesser? d 48) F)
-         ((lesser? 57 d) F)
+         ((lesser? d 48) #false)
+         ((lesser? 57 d) #false)
          (else (- d 48))))
 
    ; → digit|F tail
@@ -425,12 +425,12 @@
          (cond
             ((null? lst)
                (if (eq? digits 0)
-                  (values F null)
+                  (values #false null)
                   (values n null)))
             ((digit-val (car lst)) =>
                (λ (d) (loop (cdr lst) (+ d (* n 10)) (+ digits 1))))
             ((eq? digits 0)
-               (values F lst))
+               (values #false lst))
             (else
                (values n lst)))))
 
@@ -542,24 +542,24 @@
            (34 . 34)    ; ""
            (39 . 39)))) ; ''
         
-   ;; → lst False = ran out of data trying to parse up to close, but lst is the same with partial parsing
+   ;; → lst #false = ran out of data trying to parse up to close, but lst is the same with partial parsing
    ;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
    (define (grow lst close rout)
       (if (null? lst)
-         (values (reverse rout) False) ;; out of data, didn't find close. return partial parse.
+         (values (reverse rout) #false) ;; out of data, didn't find close. return partial parse.
          (lets ((hd lst lst))
             (cond
                ((eq? hd close)
                   ;; match complete, return with rest of list
                   (values (reverse (cons close rout)) lst))
-               ((get usual-delims hd F) =>
+               ((get usual-delims hd #false) =>
                   (λ (next-close)
                      (lets ((this lst (grow lst next-close null)))
                         (if lst ;; we didn't run out of data and this is a single tree node
                            (grow lst close (cons (cons hd this) rout))
                            ;; we ran out of data. this is a list of partial parses (having the data of 
                            ;; lst after hd in some form) which we want to preserve as tail
-                           (values (append (reverse rout) (cons hd this)) False)))))
+                           (values (append (reverse rout) (cons hd this)) #false)))))
                (else ;; add one byte to this node
                   (grow lst close (cons hd rout)))))))
 
@@ -588,7 +588,7 @@
    (define (pick-sublist rs lst)
       (let ((subs (sublists lst)))
          (if (null? subs)
-            (values rs False)
+            (values rs #false)
             (lets ((rs n (rand rs (length subs))))
                (values rs (lref subs n))))))
 
@@ -606,7 +606,7 @@
       (if (pair? lst)
          (let ((hd (car lst)))
             (if (pair? hd)
-               (let ((maybe-op (get opff hd F)))
+               (let ((maybe-op (get opff hd #false)))
                   (if maybe-op
                      (cons (maybe-op (car lst))
                         (edit-sublists (cdr lst) opff))
@@ -620,7 +620,7 @@
       (let loop ((lst lst) (rout null))
          (if (null? lst)
             (reverse rout)
-            (lets ((closep (get usual-delims (car lst) F)))
+            (lets ((closep (get usual-delims (car lst) #false)))
                (if closep
                   (lets 
                      ((hd (car lst))
@@ -644,7 +644,7 @@
                 ;(_ (if (not (equal? (byte-vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
                 (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
                 (lst (edit-sublist lst sub op)))
-               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with F on output)
+               (cons (list->byte-vector (flatten lst null)) (cdr ll)))))) ;; fixme; check for overgrown leaves (or crash with #false on output)
 
    ;; todo: make these 3 with (sublists → mapping) → (rs → (ll → ...))
 
@@ -660,7 +660,7 @@
                    (rs toswap (random-subset rs subs)) ;; choose which to swap <- make a special case for swapping 2?
                    (toswap (cons (car subs) toswap))
                    (rs arr (random-permutation rs subs)) ;; permute targets
-                   (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) F (zip cons toswap arr))) ;; aim
+                   (mapping (fold (λ (map pair) (put map (car pair) (λ (x) (cdr pair)))) #false (zip cons toswap arr))) ;; aim
                    (lst (edit-sublists lst mapping))) ;; fire
                   (cons (list->byte-vector (flatten lst null)) (cdr ll)))))))
 
@@ -692,7 +692,7 @@
    (define (choose-child rs node)
       (let ((subs (sublists node)))
          (if (null? subs)
-            (values rs False)
+            (values rs #false)
             (rand-elem rs subs))))
 
    (define (choose-stutr-nodes rs subs abort)
@@ -790,11 +790,11 @@
 
    (define (match-prefix lst p)
       (cond
-         ((null? p) True)
-         ((null? lst) False)
+         ((null? p) #true)
+         ((null? lst) #false)
          ((eq? (car lst) (car p))
             (match-prefix (cdr lst) (cdr p)))
-         (else False)))
+         (else #false)))
 
    (define (occurrences lst pat)
       (let loop ((lst lst) (found null) (pos 0))
@@ -830,7 +830,7 @@
                   (radix-walk tails (cons char path) (- n 1)
                      (note-substring (length tails) (cons char path) found)))
                found
-               (fold add-suffix False lsts)))))
+               (fold add-suffix #false lsts)))))
 
    ;; list of list suffixes
    (define (suffixen lst)
@@ -1100,14 +1100,14 @@
    ;; call (cont rs tail) after mutation
    (define (once-dec rs mutafn ll cont)
       (lets 
-         ((hd ll (uncons ll F))
+         ((hd ll (uncons ll #false))
           (rs ip (rand rs 32))) ;; initial inverse mutation probability
          (if hd
             (let loop ((rs rs) (ll ll) (last hd) (ip ip))
                (lets ((rs n (rand rs ip)))
                   (if (eq? n 0)
                      (cont rs (mutafn (cons last ll)))
-                     (lets ((next ll (uncons ll F)))
+                     (lets ((next ll (uncons ll #false)))
                         (if next
                            (cons last 
                               (loop rs ll next (+ ip 1)))
@@ -1163,7 +1163,7 @@
    ;; stream data from port as desired sized blocks (which are deterministic unlike the sizes we happen to read) and close it at eof
    (define (stream-blocks rs port)
       (lets ((rs first (rand-block-size rs)))
-         (let loop ((rs rs) (last F) (wanted first)) ;; 0 = block ready (if any)
+         (let loop ((rs rs) (last #false) (wanted first)) ;; 0 = block ready (if any)
             (let ((block (interact port wanted)))
                (cond
                   ((eof? block) ;; end of stream
@@ -1178,7 +1178,7 @@
                      (lets
                         ((block (merge last block))
                          (rs next (rand-block-size rs)))
-                        (pair block (loop rs F next))))
+                        (pair block (loop rs #false next))))
                   (else
                      (loop rs (merge last block) 
                         (- wanted (sizeb block)))))))))
@@ -1205,7 +1205,7 @@
          (let loop ((rs rs) (order order))
             (cond
                ((null? order)
-                  (sgen-sample rs paths F)) ;; repermute 
+                  (sgen-sample rs paths #false)) ;; repermute 
                ((string? (car order)) ;; a path
                   (pair
                      (cons
@@ -1273,7 +1273,7 @@
             (lets ((rs b (rand rs 256)))
                (random-bytes rs 0 (cons b out))))
          (else ;; get and split 16  bits
-            (lets ((digit rs (uncons rs F)))
+            (lets ((digit rs (uncons rs #false)))
                (random-bytes rs (- n 2)
                   (ilist (band digit 255) (>> digit 8) out))))))
 
@@ -1373,8 +1373,8 @@
                (lets ((as bs (muxer as bs))) 
                   (cont as bs)))))
       (lets 
-         ((a as (uncons all F))
-          (b bs (uncons bll F)))
+         ((a as (uncons all #false))
+          (b bs (uncons bll #false)))
          (cond
             ((not a) (finish all bll)) ;; no base stream to mux
             ((not b) (finish all bll)) ;; no data to mux against
@@ -1385,11 +1385,11 @@
                         (finish (cons a as) (cons b bs))
                         (lets ((rs n (rand rs 2)))
                            (if (eq? n 0)
-                              (lets ((aa as (uncons as F)))
+                              (lets ((aa as (uncons as #false)))
                                  (if aa
                                     (pair a (loop rs aa as b bs)) ;; more a follows, emit and continue
                                     (finish (list a) (cons b bs)))) ;; out of a
-                              (lets ((bb bs (uncons bs F)))
+                              (lets ((bb bs (uncons bs #false)))
                                  (if bb
                                     (loop rs a as bb bs) ;; more b follows, drop b an continue
                                     (loop rs a as b null)))))))))))) ;; out of b, keep last block
@@ -1432,7 +1432,7 @@
    (let loop ((rs rs) (gens gens) (taken null))
       (lets ((rs occ? (rand-occurs? rs multi-prob)))
          (if (or occ? (null? taken))
-            (lets ((this gens (uncons gens F)))
+            (lets ((this gens (uncons gens #false)))
                (loop rs gens (cons this taken)))
             (values rs gens taken)))))
 
@@ -1448,13 +1448,13 @@
             (lets ((rs lls (random-permutation rs lls)))
                (master-merge rs muxs fuzs lls)))
          ((eq? n 1) ;; add a stream fuzzer to first
-            (lets ((fuzz fuzs (uncons fuzs F)))
+            (lets ((fuzz fuzs (uncons fuzs #false)))
                (master-merge rs muxs fuzs 
                   (cons (fuzz (car lls)) (cdr lls)))))
          ((eq? n 2) ;; merge two streams (if more than one)
             (if (not (null? (cdr lls)))
                (lets 
-                  ((mux muxs (uncons muxs F))
+                  ((mux muxs (uncons muxs #false))
                    (a (car lls)) (b (cadr lls)))
                   (master-merge rs muxs fuzs
                      (cons (mux a b) (cddr lls))))
@@ -1481,7 +1481,7 @@
       ((node (car opts))
        (pri ll node))
       (if (< n pri)
-         (lets ((next ll (uncons ll F)))
+         (lets ((next ll (uncons ll #false)))
             (values next (cons (cons pri ll) (cdr opts))))
          (lets ((grabbed opts (pop-at (cdr opts) (- n pri))))
             (values grabbed (cons node opts))))))
@@ -1529,8 +1529,8 @@
 ;; merge muxer polymerase stream and muxer stream to a stream muxer stream
 (define (muxer-stream pols muxs)
    (lets
-      ((pol pols (uncons pols F))
-       (mux muxs (uncons muxs F)))
+      ((pol pols (uncons pols #false))
+       (mux muxs (uncons muxs #false)))
       (pair
          (λ (aln bln)
             (lets
@@ -1544,8 +1544,8 @@
 ;; ditto, but for stream muxers which take just one stream as argument
 (define (fuzzer-stream pols fuzs)
    (lets
-      ((pol pols (uncons pols F))
-       (fuz fuzs (uncons fuzs F)))
+      ((pol pols (uncons pols #false))
+       (fuz fuzs (uncons fuzs #false)))
       (pair
          (λ (aln)
             (lets ((a-info a-data aln))
@@ -1556,7 +1556,7 @@
 
 (define (force-and-forget-n ll n)
    (if (> n 0)
-      (lets ((this ll (uncons ll F)))
+      (lets ((this ll (uncons ll #false)))
          (this)
          (force-and-forget-n ll (- n 1)))))
      
@@ -1575,7 +1575,7 @@
       $ radamsa -n 10 -o /tmp/fuzzed-%n.foo foo-files/*.foo")
 
    (define (preread-stdin rs)
-      (force (stream-blocks rs stdin)))
+      (force-ll (stream-blocks rs stdin)))
 
 ;; force up to n nodes of a lazy list
 (define (force-n ll n)
@@ -1590,21 +1590,21 @@
    (cons "standard-input" 
       (let ((ll (stream-blocks rs stdin)))
          (if force?
-            (force ll)         ;; O(n) - preread if we need to make more than 1 output
+            (force-ll ll)         ;; O(n) - preread if we need to make more than 1 output
             (force-n ll 2))))) ;; O(1) - lazy read and on-line fuzzing if we make just 1 output, preread a few KB
 
 ;; if "-" argument is given (at least once), add a byte stream node and remove all occurrences of "-"
 ;; would be a map, but there can be more than one "-"
 (define (maybe-convert-stdin paths seed n)
-   (let loop ((out null) (paths paths) (added? False))
+   (let loop ((out null) (paths paths) (added? #false))
       (cond
          ((null? paths) out)
          ((string-eq? "-" (car paths))
             (if added? ;; drop multiple ones
-               (loop out (cdr paths) T)
+               (loop out (cdr paths) #true)
                (loop 
                   (cons (stdin-stream (seed->rands seed) (> n 1)) out) ; <- maybe use sample-stream here
-                  (cdr paths) T)))
+                  (cdr paths) #true)))
          (else
             (loop (cons (car paths) out) (cdr paths) added?)))))
 
@@ -1706,13 +1706,13 @@ with $ radamsa --big-help.")
       (λ (ret)
          (let ((fail (λ (why rval) (print why) (ret rval))))
             (cond
-               ((get opts 'help F) (print-usage-text F) 0)
-               ((get opts 'advanced F) (print-usage-text T) 0)
-               ((get opts 'examples F) (print examples) 0)
-               ((get opts 'version F)
+               ((get opts 'help #false) (print-usage-text #false) 0)
+               ((get opts 'advanced #false) (print-usage-text #true) 0)
+               ((get opts 'examples #false) (print examples) 0)
+               ((get opts 'version #false)
                   (print version-str)
                   0)
-               ((not (get opts 'seed F))
+               ((not (get opts 'seed #false))
                   ;; make a time-based seed unless one is given explicitly
                   ;(print-stderr/time '("added seed, restart"))
                   (start-radamsa (add-seed opts) paths))
@@ -1721,27 +1721,27 @@ with $ radamsa --big-help.")
                   0)
                (else
                   (lets
-                     ((seed (string->seed (get opts 'seed F)))
+                     ((seed (string->seed (get opts 'seed #false)))
                       (rs (seed->rands seed))
                       (note (debug-printer (get opts 'verbose 0)))
                       (paths ;; add stdin as a sample if no files given and no blank requested
                         (if (and (null? paths) (m/sample/ (get opts 'generators "")))
                            '("-") paths))
-                      (n (get opts 'count F))
+                      (n (get opts 'count #false))
                       ;(_ (print-stderr/time '("limiting samples")))
                       ;(rs paths (limit-samples rs paths n)) 
                       ;(_ (print-stderr/time '("limited, converting stdin")))
                       (paths   (maybe-convert-stdin paths seed n))
-                      (type    (or (get opts 'type F) (classify-content paths)))
+                      (type    (or (get opts 'type #false) (classify-content paths)))
                       (_ (note (list "data classification is " type)))
                       ;(_       (print-stderr (list "Data type is " type)))
                       (fuzzer-selection (if (eq? type 'binary) 'binary-fuzzers 'text-fuzzers))
                       ;(_ (print-stderr/time '("starting generators")))
-                      (f-pris  (split-priorities (get opts fuzzer-selection F) opts paths fail))
-                      (g-pris  (split-priorities (get opts 'generators F) opts paths fail))
-                      (p-pris  (split-priorities (get opts 'polymerase F) opts paths fail))
-                      (m-pris  (split-priorities (get opts 'muxers F) opts paths fail))
-                      (mp-pris (split-priorities (get opts 'muxer-polymerase F) opts paths fail))
+                      (f-pris  (split-priorities (get opts fuzzer-selection #false) opts paths fail))
+                      (g-pris  (split-priorities (get opts 'generators #false) opts paths fail))
+                      (p-pris  (split-priorities (get opts 'polymerase #false) opts paths fail))
+                      (m-pris  (split-priorities (get opts 'muxers #false) opts paths fail))
+                      (mp-pris (split-priorities (get opts 'muxer-polymerase #false) opts paths fail))
                       ;; todo: map sample source generator to samples
                       ;(_ (print-stderr/time '("generators running, checking for stdin")))
                       ;(_ (print-stderr/time '("generator startup")))
@@ -1758,7 +1758,7 @@ with $ radamsa --big-help.")
                       (multi-prob 
                         (if have-stdin? 
                            0 ;; don't use multiple streams when working on-line on stdin
-                           (get opts 'multi-prob F)))
+                           (get opts 'multi-prob #false)))
                       (_ (note (list "multi-prob is " multi-prob)))
                       (master master-polymerase)
                       (lls (master rs gens muxs fuzs multi-prob))
@@ -1770,7 +1770,7 @@ with $ radamsa --big-help.")
                               (else      record-meta/verbose-stderr))))
                       (thunks ;; (thunk ...), calling causes io 
                         (lzip (λ (a b) (λ () (wait 100) (a b record-meta))) ;; <- wait in order to allow some time to write
-                           (get opts 'output F)
+                           (get opts 'output #false)
                            lls))
                       (thunks (ldrop thunks (get opts 'seek 0))) ;; fast forward if --seek
                       )
