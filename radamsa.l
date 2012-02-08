@@ -266,7 +266,7 @@
             comment "Which muxer mutator patterns to use? (pass help to list options)")
         (seek "-S" "--seek" cook ,string->integer check ,(λ (x) (>= x 0))
             comment "Skip n outputs." default "0") ;; temporarily disabled due to a bug (likely fd leak)
-        (multi-prob "-M" "--multi-prob" cook ,(λ (x) (string->number x #false)) default "1/12" check ,valid-probability?
+        (multi-prob "-M" "--multi-prob" cook ,(λ (x) (string->number x 10)) default "0.04" check ,valid-probability?
             comment "probability of using multiple data sources to make a single output (0 to always use one)")
         )))
 
@@ -1130,7 +1130,7 @@
                   (lets ((rs n (rand rs ip)))
                      ;(show " - n mutate: " (list n '/ ip))
                      (cond
-                        ;((eq? n 10) ll) ;; max mutation limit, enable if turns out to be necessar. (maybe in stutr-style stuff)
+                        ((eq? n 100) ll) ;; max 100 mutations, needed to avoid generating huge outputs
                         ((eq? n 0) (loop rs ll (+ ip 1))) ;; keep mutatin
                         (else ll)))))))) ;; done mutatin
 
