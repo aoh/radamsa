@@ -43,6 +43,10 @@ clean:
 todo:
 	ol -n *.l
 
+bin/radamsa-0.3: radamsa-0.3.scm
+	ol -O1 -o radamsa-0.3.c radamsa-0.3.scm
+	gcc -O2 -o bin/radamsa-0.3 radamsa-0.3.c
+
 get-owl:
 	# need to install owl to be able to compile radamsa
 	# this may take a moment depending on your machine
