@@ -1,41 +1,83 @@
 #!/usr/bin/ol --run
 
 ;;;
-;;; Radamsa 
+;;; Radamsa - a general purpose fuzzer
 ;;;
 
-;;;
-;;; Todo vs 0.2.x
-;;;
-; 
-; - incremental priority learning
-; - support for incremental mutation learning
-; - multiple mutation attempts on failures
-; - proper per-module documentation (via command line and otherwise)
-; - much more mutations, patterns and generators
-; 
-; mutator:  rs ll meta → muta' rs' ll' meta'    -- merged mutator
-;   - contains the individual mutations and priorities?
-; pattern: rs ll mutator meta → 
-;   a: have fd there and write as you go returning rs' meta' 
-;   b: store updated states to end of stream and pop them after writing
-; generator: rs dict args → (ll ...) 
-;   - unlike in 0.2, make stdin a separate generator to allow separate priority
-;   - file streamers ignore it, it either preloads or streams 
-;   - turn muxing into separate generators because
-;     + rarely useful in practice (incremental learning can do most of the requred stuff already)
-;     + simplifies mental model a lot (stream data -> choose where to do stuff -> do stuff there)
+;; todo and think tomorrow:
+; - generators might be more convenient as gen rs :: → rs ll meta gen'
+; - ditto for patterns (?)
+; - thread a single random state through everything instead of some implicit ones?
+; - make sure it's easy to add documentation and metadata everywhere from beginning
+; - use direct IO later. requires only local changes.
+; - log-growing block sizes up to max running speed?
+; - would be easy to allow dumping smallish resumable (fasl) states. useful?
 
 (import (owl args))
 
 (define version-str "Radamsa 0.3a") ;; aka funny fold
 (define usage-text "Usage: radamsa [args]")
 
+;; muta :: rs ll meta → self' rs' ll' meta'
+(define (dummy-mutator rs ll meta)
+   (values
+      dummy-mutator
+      rs
+      (cons (vector 42 42 42) ll)
+      (put meta 'dummies 
+         (+ 1 (get meta 'dummies 0)))))
+
+;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
+(define (dummy-pattern rs ll mutator meta)
+   (lets 
+      ((mutator rs ll meta 
+         (dummy-mutator rs ll meta)))
+      (lappend ll (list (tuple rs mutator meta)))))
+
+;; gen :: rs dict paths → ((bvec ...) ...), both lazy
+(define (dummy-generator rs dict paths)
+   (pair
+      (list (vector 97 97 97) (vector 98 98 98) (vector 99 99 99) (vector 10))
+      (dummy-generator rs dict paths)))
+
+;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
+(define (output ll fd)
+   (let loop ((ll ll) (n 0))
+      (lets ((x ll (uncons ll #false)))
+         (cond
+            ((not x)
+               (error "output:" "no trailing state"))
+            ((byte-vector? x)
+               (mail fd x)
+               (loop ll (+ n (vec-len x))))
+            ((tuple? x)
+               ((if (eq? x stdout) flush-port close-port) fd)
+               (lets ((rs muta meta x))
+                  (values rs muta meta n)))
+            (else
+               (error "output: bad node: " x))))))
+
 (define (start-radamsa dict paths)
+   ;; show command line stuff
    (for-each 
       (λ (thing) (print* (list (car thing) ": " (cdr thing))))
       (ff->list 
          (put dict 'samples paths)))
+
+   ;; run test
+   (lets
+      ((rs (seed->rands (time-ms)))
+       (lls (dummy-generator rs dict paths))
+       (ll lls (uncons lls 42))
+       (muta dummy-mutator)
+       (pat  dummy-pattern)
+       (rs muta meta n 
+         (output
+            (pat rs ll muta #false)
+            stdout)))
+      (show " => " n))
+   
+   ;; done
    0)
 
 (define command-line-rules
