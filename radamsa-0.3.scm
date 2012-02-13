@@ -5,13 +5,14 @@
 ;;;
 
 ;; todo and think tomorrow:
-; - generators might be more convenient as gen rs :: → rs ll meta gen'
-; - ditto for patterns (?)
-; - thread a single random state through everything instead of some implicit ones?
+; - convert patterns and outputs to rs → self rs val ...
 ; - make sure it's easy to add documentation and metadata everywhere from beginning
 ; - use direct IO later. requires only local changes.
 ; - log-growing block sizes up to max running speed?
 ; - would be easy to allow dumping smallish resumable (fasl) states. useful?
+; - allow saving metadata from the beginning
+;   + separately given file? --metadata out.meta
+;   + per file? -M | --metadata-suffix .meta
 
 (import (owl args))
 
@@ -30,15 +31,18 @@
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
 (define (dummy-pattern rs ll mutator meta)
    (lets 
-      ((mutator rs ll meta 
+      ((meta (put meta 'pattern 'dummy))
+       (mutator rs ll meta 
          (dummy-mutator rs ll meta)))
       (lappend ll (list (tuple rs mutator meta)))))
 
-;; gen :: rs dict paths → ((bvec ...) ...), both lazy
-(define (dummy-generator rs dict paths)
-   (pair
-      (list (vector 97 97 97) (vector 98 98 98) (vector 99 99 99) (vector 10))
-      (dummy-generator rs dict paths)))
+;; dict paths → gen
+;; gen :: rs → gen' rs' ll
+(define (dummy-generator dict paths)
+   (define (gen rs)
+      (values gen rs 
+         (list (vector 97 97 97) (vector 98 98 98) (vector 99 99 99) (vector 10))))
+   gen)
 
 ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
 (define (output ll fd)
@@ -51,12 +55,13 @@
                (mail fd x)
                (loop ll (+ n (vec-len x))))
             ((tuple? x)
-               ((if (eq? x stdout) flush-port close-port) fd)
+               ((if (eq? fd stdout) flush-port close-port) fd)
                (lets ((rs muta meta x))
                   (values rs muta meta n)))
             (else
                (error "output: bad node: " x))))))
 
+;; dict args → rval
 (define (start-radamsa dict paths)
    ;; show command line stuff
    (for-each 
@@ -67,24 +72,36 @@
    ;; run test
    (lets
       ((rs (seed->rands (time-ms)))
-       (lls (dummy-generator rs dict paths))
-       (ll lls (uncons lls 42))
+       (gen (dummy-generator dict paths))
+       (out (get dict 'output 'bug))
+       (rs gen ll (gen rs))
        (muta dummy-mutator)
        (pat  dummy-pattern)
-       (rs muta meta n 
-         (output
-            (pat rs ll muta #false)
-            stdout)))
+       (out fd meta (out))
+       (rs muta meta n (output (pat rs ll muta meta) fd)))
+      (show " -> meta " meta)
       (show " => " n))
-   
+
    ;; done
    0)
+
+(define (stdout-stream)
+   (values stdout-stream stdout 
+      (put #false 'output 'stdout))) 
+
+;; args → (out :: → out' fd meta) v null | #false
+(define (dummy-output-stream arg)
+   (if (equal? arg "-")
+      stdout-stream
+      (begin
+         (show "I can't yet output " arg)
+         #false)))
 
 (define command-line-rules
    (cl-rules
       `((help "-h" "--help" comment "Show this thing.")
-        ;(output "-o" "--output" has-arg default "-" cook ,make-output-stream
-        ;    comment "Where to write the generated data?")
+        (output "-o" "--output" has-arg default "-" cook ,dummy-output-stream
+            comment "Where to write the generated data?")
         (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
             default "1" comment "How many outputs to generate?")
         (seed "-s" "--seed" has-arg comment "Random seed (any string).")
@@ -94,7 +111,5 @@
    (process-arguments (cdr args) 
       command-line-rules 
       usage-text 
-      start-radamsa)
-   0)
-
+      start-radamsa))
 
