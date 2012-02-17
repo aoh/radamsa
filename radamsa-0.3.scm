@@ -8,26 +8,18 @@
 ; - make sure it's easy to add documentation and metadata everywhere from beginning
 ; - log-growing block sizes up to max running speed?
 
-(import (owl args))
+(import 
+   (owl args))
 
 (define version-str "Radamsa 0.3a") ;; aka funny fold
 (define usage-text "Usage: radamsa [arguments] [file ...]")
-
-;; muta :: rs ll meta → self' rs' ll' meta'
-(define (dummy-mutator rs ll meta)
-   (values
-      dummy-mutator
-      rs
-      (cons (list->vector (cons #\X (vector->list (car ll)))) (cdr ll))
-      (put meta 'dummies 
-         (+ 1 (get meta 'dummies 0)))))
 
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
 (define (dummy-pattern rs ll mutator meta)
    (lets 
       ((meta (put meta 'pattern 'dummy))
        (mutator rs ll meta 
-         (dummy-mutator rs ll meta)))
+         (mutator rs ll meta)))
       (lappend ll (list (tuple rs mutator meta)))))
 
 ;; dict paths → gen
@@ -98,7 +90,14 @@
             (print*-to (list "Too many things: " lst) stderr)
             #false))))
 
-(define (test-mutation a b c) a)
+;; mutation :: rs ll meta → mutation' rs' ll' meta' delta
+(define (test-mutation rs ll meta)
+   (values
+      test-mutation
+      rs
+      (cons (list->vector (cons #\X (vector->list (car ll)))) (cdr ll))
+      (put meta 'test (+ 1 (get meta 'test 0)))
+      0))
 
 (define (name->fuzzer str)
    (cond
@@ -113,18 +112,33 @@
    (cond
       ((not node) #false)
       ((name->fuzzer (car node)) => 
-         (λ (func) (cons func (cdr node))))
+         (λ (func) (cons (cdr node) func)))
       (else #false)))
 
-(define (car> a b) (> (car a) (car b)))
+;; ((priority . mutafn) ...) → (rs ll meta → mutator' rs' ll' meta')
+(define (mux-fuzzers fs)
+   (λ (rs ll meta)
+      (lets
+         ((mfn rs ll meta delta
+            ((cdar fs) rs ll meta)))
+         (values 
+            (mux-fuzzers 
+               (cons (cons mfn (+ delta (caar fs))) (cdr fs)))
+            rs ll meta))))
 
-(define (string->fuzzers str)
+(define (car> a b) 
+   (> (car a) (car b)))
+
+;; str → mutator | #f
+(define (string->mutator str)
    (lets
       ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
        (ps (map selection->priority ps))
        (fs (map priority->fuzzer ps)))
+      (show "fs: " fs)
       (if (all self fs) 
-         (sort car> fs)
+         (mux-fuzzers
+            (sort car> fs))
          #false)))
 
 (define command-line-rules
@@ -135,7 +149,7 @@
         (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
             default "1" comment "How many outputs to generate?")
         (seed "-s" "--seed" cook ,string->integer comment "Random seed (number, default random)")
-        (fuzzers "-f" "--fuzzers" cook ,string->fuzzers 
+        (fuzzers "-f" "--fuzzers" cook ,string->mutator 
             comment "Enabled mutations and initial probabilities"
             default "b*=1,l*=2")
         (list "-l" "--list" comment "List mutations, patterns and generators")
@@ -176,7 +190,6 @@
          (print "Would list stuff here.")
          0)
       (else
-         (print (seed->rands (getf dict 'seed)))
          ;; print command line stuff
          (for-each 
             (λ (thing) (print* (list (car thing) ": " (cdr thing))))
@@ -195,13 +208,14 @@
                   0
                   (lets
                      ((gen rs ll (gen rs)) 
-                      (muta dummy-mutator)
+                      (muta (getf dict 'fuzzers))
                       (pat  dummy-pattern)
                       (out fd meta (out))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
-                     ;(show " -> meta " meta)
-                     ;(show " => " n-written)
+                     (print "")
+                     (show " -> meta " meta)
+                     (show " => " n-written)
                      (loop rs gen out (- n 1)))))))))
 
 (λ (args)
