@@ -121,15 +121,19 @@
       pri
       (max 1 (min 1000 (+ pri delta)))))
 
-(define (random-priorities rs pris)
-   (fold-map
-      (λ (rs node)
-         (lets ((rs pri (rand rs (car node))))
-            (values rs (cons pri node))))
-      rs pris))
-
 (define (car> a b) 
    (> (car a) (car b)))
+
+;; rs pris → rs' pris'
+(define (weighted-permutation rs pris)
+   (lets    
+      ((rs ppris ; ((x . (pri . fn)) ...)
+         (fold-map
+            (λ (rs node)
+               (lets ((rs pri (rand rs (car node))))
+                  (values rs (cons pri node))))
+            rs pris)))
+      (values rs (map cdr (sort car> ppris)))))
 
 ;; ((priority . mutafn) ...) → (rs ll meta → mutator' rs' ll' meta')
 (define (mux-fuzzers fs)
@@ -137,22 +141,19 @@
       (let loop ((ll ll)) ;; <- force up to a data node
          (cond
             ((pair? ll)
-               ;; pick a weighted permutation, try in order, updated everything learned
-               (lets
-                  ((rs pfs (random-priorities rs fs)) ;; ((this-pri (priority . mutafn)) ...)
-                   (pfs (sort car> pfs)))
+               (lets ((rs pfs (weighted-permutation rs fs))) ;; ((priority . mutafn) ...)
                   (let loop ((pfs pfs) (out null) (rs rs)) ;; try each in order
                      (if (null? pfs) ;; no mutation worked
                         (values (mux-fuzzers out) rs ll meta)
                         (lets
                            ((mfn rs mll mmeta delta 
-                              ((cddar pfs) rs ll meta))
+                              ((cdar pfs) rs ll meta))
                             (out ;; always remember whatever was learned
-                              (cons (cons (adjust-priority (cadar pfs) delta) mfn) out)))
+                              (cons (cons (adjust-priority (caar pfs) delta) mfn) out)))
                            (if (equal? (car ll) (car mll)) 
                               ;; try something else if no changes, but update state
                               (loop (cdr pfs) out rs)
-                              (values (mux-fuzzers (append out (map cdr pfs))) rs mll mmeta)))))))
+                              (values (mux-fuzzers (append out pfs)) rs mll mmeta)))))))
             ((null? ll)
                (values (mux-fuzzers fs) rs ll meta))
             (else 
