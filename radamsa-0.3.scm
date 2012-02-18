@@ -15,12 +15,29 @@
 (define usage-text "Usage: radamsa [arguments] [file ...]")
 
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
-(define (dummy-pattern rs ll mutator meta)
-   (lets 
-      ((meta (put meta 'pattern 'dummy))
-       (mutator rs ll meta 
-         (mutator rs ll meta)))
-      (lappend ll (list (tuple rs mutator meta)))))
+(define (pat-once-dec rs ll mutator meta)
+   (lets
+      ((rs ip (rand rs 24)) ;; initial inverse probability, magic value
+       (this ll (uncons ll #false)))
+      (if this
+         (let loop ((rs rs) (this this) (ll ll) (ip ip))
+            (if (function? ll)
+               ;; stream more data
+               (loop rs this (ll) ip)
+               (lets ((rs n (rand rs ip)))
+                  (if (or (eq? n 0) (null? ll)) ;; mutation happens to occur, or last place for it
+                     (lets 
+                        ((meta (put meta 'pattern 'dummy))
+                         (ll (cons this ll))
+                         (mutator rs ll meta (mutator rs ll meta)))
+                        ;; use a cont here later as in 0.2
+                        (lappend ll (list (tuple rs mutator meta))))
+                     ;; keep moving
+                     (pair this
+                        (loop rs (car ll) (cdr ll) (+ ip 1)))))))
+         ;; no data to work on
+         (list (tuple rs mutator meta)))))
+
 
 ;; dict paths → gen
 ;; gen :: rs → gen' rs' ll
@@ -29,16 +46,16 @@
       (lets
          ((rs seed (rand rs #xffffffffffff)))
          (values gen rs
-            (let loop ((rs (seed->rands seed)))
+            (let loop ((rs (seed->rands seed)) (len 0))
                (lets ((rs n (rand rs 10)))
-                  (if (eq? n 0)
+                  (if (and (eq? n 0) (> len 0))
                      null
                      (lets
                         ((rs lst (random-numbers rs 26 n))  ;; get some alphabet posns
                          (lst (map (λ (x) (+ x #\a)) lst))) ;; scale to a-z
                         (pair
                            (list->vector (cons #\space lst))
-                           (loop rs)))))))))
+                           (loop rs (+ len 1))))))))))
    gen)
 
 ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
@@ -92,12 +109,20 @@
 
 ;; mutation :: rs ll meta → mutation' rs' ll' meta' delta
 (define (test-mutation rs ll meta)
-   (values
-      test-mutation
-      rs
-      (cons (list->vector (cons #\X (vector->list (car ll)))) (cdr ll))
-      (put meta 'test (+ 1 (get meta 'test 0)))
-      0))
+   (lets
+      ((bvec (car ll))
+       (rs p (rand rs (vec-len bvec)))
+       (bvec
+         (list->vector
+            (lset 
+               (vector->list bvec)
+               p #\*))))
+      (values
+         test-mutation
+         rs
+         (cons bvec (cdr ll))
+         (put meta 'test (+ 1 (get meta 'test 0)))
+         0)))
 
 (define (name->fuzzer str)
    (cond
@@ -171,17 +196,34 @@
             (sort car> fs))
          #false)))
 
+(define (string->generator str args fail)
+   (lets
+      ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
+       (ps (map selection->priority ps)))
+      (show "generator args: " args)
+      (show "generator pris: " ps)
+      'generator))
+
+(define (string->patterns str)
+   (list 'patterns str))
+
 (define command-line-rules
    (cl-rules
       `((help "-h" "--help" comment "Show this thing.")
         (output "-o" "--output" has-arg default "-" cook ,dummy-output-stream
-            comment "Where to write the generated data?")
+            comment "Where to put the generated data")
         (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
-            default "1" comment "How many outputs to generate?")
+            default "1" comment "How many outputs to generate")
         (seed "-s" "--seed" cook ,string->integer comment "Random seed (number, default random)")
-        (fuzzers "-f" "--fuzzers" cook ,string->mutator 
-            comment "Enabled mutations and initial probabilities"
-            default "b*=1,l*=2")
+        (mutations "-m" "--mutations" cook ,string->mutator 
+            comment "Which mutations to use"
+            default "test=42")
+        (patterns "-p" "--patterns" cook ,string->patterns
+            comment "Which mutation patterns to use"
+            default "trololo")
+        (generators "-g" "--generators" has-arg ; <- cannot cook yet because we don't yet have all the arguments
+            comment "Which data generators to use"
+            default "file,stdin=100")
         (list "-l" "--list" comment "List mutations, patterns and generators")
         (version "-V" "--version" comment "Show version information."))))
 
@@ -228,7 +270,8 @@
          
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
-             (rs (seed->rands (getf dict 'seed))))
+             (rs (seed->rands (getf dict 'seed)))
+             (_gen (string->generator (getf dict 'generators) paths fail)))
             (let loop 
                ((rs rs)
                 (gen (dummy-generator dict paths))
@@ -238,8 +281,8 @@
                   0
                   (lets
                      ((gen rs ll (gen rs)) 
-                      (muta (getf dict 'fuzzers))
-                      (pat  dummy-pattern)
+                      (muta (getf dict 'mutations))
+                      (pat  pat-once-dec)
                       (out fd meta (out))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
