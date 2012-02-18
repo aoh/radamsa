@@ -196,14 +196,26 @@
             (sort car> fs))
          #false)))
 
-(define (string->generator str args fail)
+
+(define (string->generator-priorities str)
    (lets
       ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
        (ps (map selection->priority ps)))
-      (show "generator args: " args)
-      (show "generator pris: " ps)
-      'generator))
+      (if (all self ps) ps #false)))
 
+(define (priority->generator args fail n)
+   (λ (pri)
+      (show "pri node is " pri)
+      (if pri
+         'ok
+         (fail "Bad generator priority."))))
+
+(define (generator-priorities->generator pris args fail n)
+   (show "generator priorities are " pris)
+   (let
+      ((gs (map (priority->generator args fail n) pris)))
+      (show "gs are: " gs)))
+   
 (define (string->patterns str)
    (list 'patterns str))
 
@@ -221,7 +233,7 @@
         (patterns "-p" "--patterns" cook ,string->patterns
             comment "Which mutation patterns to use"
             default "trololo")
-        (generators "-g" "--generators" has-arg ; <- cannot cook yet because we don't yet have all the arguments
+        (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
             comment "Which data generators to use"
             default "file,stdin=100")
         (list "-l" "--list" comment "List mutations, patterns and generators")
@@ -271,7 +283,7 @@
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
              (rs (seed->rands (getf dict 'seed)))
-             (_gen (string->generator (getf dict 'generators) paths fail)))
+             (_gen (generator-priorities->generator (getf dict 'generators) paths fail (getf dict 'count))))
             (let loop 
                ((rs rs)
                 (gen (dummy-generator dict paths))
