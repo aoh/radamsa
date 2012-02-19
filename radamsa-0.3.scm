@@ -4,17 +4,12 @@
 ;;; Radamsa - a general purpose fuzzer
 ;;;
 
-;; todo and think tomorrow:
-; - make sure it's easy to add documentation and metadata everywhere from beginning
-; - log-growing block sizes up to max running speed?
-
-(import 
-   (owl args))
+(import (owl args))
 
 (define version-str "Radamsa 0.3a") ;; aka funny fold
 (define usage-text "Usage: radamsa [arguments] [file ...]")
 
-(define max-block-size (* 8 1024))
+(define max-block-size (* 8 1024)) ; average half of this
 
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
 (define (pat-once-dec rs ll mutator meta)
@@ -39,8 +34,6 @@
                         (loop rs (car ll) (cdr ll) (+ ip 1)))))))
          ;; no data to work on
          (list (tuple rs mutator meta)))))
-
-
 
 (define (rand-block-size rs)
    (lets ((rs n (rand rs max-block-size)))
@@ -90,6 +83,24 @@
             (values gen rs ll (put #false 'generator 'stdin)))
          (values gen rs ll (put #false 'generator 'stdin)))))
 
+(define (file-streamer paths)
+   (lets
+      ((paths (list->vector paths))
+       (n (vec-len paths)))
+      (define (gen rs)
+         (lets
+            ((rs n (rand rs n))
+             (path (vec-ref paths n))
+             (port (open-input-file path)))
+            (if port
+               (lets ((rs ll (port->stream rs port)))
+                  (values gen rs ll 
+                     (list->ff (list '(generator . file) (cons 'source path)))))
+               (begin   
+                  (print*-to (list "Warning: failed to open given sample path " path) stderr)
+                  (gen rs)))))
+      gen))
+
 ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
 (define (output ll fd)
    (let loop ((ll ll) (n 0))
@@ -133,10 +144,8 @@
       ((bvec (car ll))
        (rs p (rand rs (vec-len bvec)))
        (bvec
-         (list->vector
-            (lset 
-               (vector->list bvec)
-               p #\*))))
+         (list->byte-vector
+            (lset (vector->list bvec) p #\*))))
       (values
          test-mutation
          rs
@@ -235,15 +244,18 @@
                         (stdin-generator (= n 1)))
                      #false))
                ((equal? name "file")
-                  (if (null? args)
-                     #false ; no samples given, don't start this one
-                     (cons priority (list 'sample-streamer args))))
+                  (let ((args (keep (λ (x) (not (equal? x "-"))) args)))
+                     (if (null? args)
+                        #false ; no samples given, don't start this one
+                        (cons priority (file-streamer args)))))
                (else
                   (fail (list "Unknown data generator: " name)))))
          (fail "Bad generator priority"))))
 
 (define (generator-priorities->generator pris args fail n)
-   (let ((gs (map (priority->generator args fail n) pris)))
+   (lets 
+      ((gs (map (priority->generator args fail n) pris))
+       (gs (keep self gs)))
       (cond
          ((null? gs) (fail "no generators"))
          ((null? (cdr gs)) (cdar gs))
@@ -252,9 +264,9 @@
 (define (string->patterns str)
    (list 'patterns str))
 
-(define (stdout-stream)
+(define (stdout-stream meta)
    (values stdout-stream stdout 
-      (put #false 'output 'stdout))) 
+      (put meta 'output 'stdout))) 
 
 ;; args → (out :: → out' fd meta) v null | #false
 (define (dummy-output-stream arg)
@@ -263,7 +275,6 @@
       (begin
          (show "I can't yet output " arg)
          #false)))
-
 
 (define command-line-rules
    (cl-rules
@@ -335,7 +346,6 @@
                   (generator-priorities->generator 
                      (getf dict 'generators) paths fail (getf dict 'count)))
                 (muta (getf dict 'mutations))
-
                 (out (get dict 'output 'bug))
                 (n (getf dict 'count)))
                (if (= n 0)
@@ -343,7 +353,7 @@
                   (lets
                      ((gen rs ll meta (gen rs))
                       (pat  pat-once-dec)
-                      (out fd meta (out))
+                      (out fd meta (out meta))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
                      ;(print "")
