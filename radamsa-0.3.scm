@@ -86,6 +86,8 @@
       ((rs ll (port->stream rs stdin))
        (ll (if online? ll (force-ll ll)))) ;; preread if necessary
       (λ (rs)
+         ;; note: independent of rs. could in offline case read big chunks and resplit each.
+         ;; not doing now because online case is 99.9% of stdin uses
          (values rs ll (put #false 'generator 'stdin)))))
 
 (define (file-streamer paths)
@@ -272,8 +274,6 @@
    (lets
       ((gs (sort car> gs))
        (n (fold + 0 (map car gs))))
-      (show "GS: " gs)
-      (show " -> " n)
       (define (gen rs)
          (lets
             ((rs n (rand rs n)))
@@ -327,6 +327,8 @@
         (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
             comment "Which data generators to use"
             default "file,stdin=100")
+        (metadata "-M" "--metadata" has-arg
+            comment "Save metadata about generated files to this file")
         (list "-l" "--list" comment "List mutations, patterns and generators")
         (version "-V" "--version" comment "Show version information."))))
 
@@ -356,6 +358,19 @@
    (print " stdin: read data from standard input if no paths are given or - is among them")
    (print " file: read data from given files"))
 
+(define (maybe-meta-logger path fail)
+   (if path
+      (let ((port (open-output-file path)))
+         (if port
+            (λ (stuff)
+               (if (eq? stuff 'close)
+                  (close-port port)
+                  (mail port (serialize stuff '(10)))))
+            (fail "Cannot open metadata log file")))
+      (λ (stuff)
+         (show "META: " stuff))))
+
+
 ;; dict args → rval
 (define (start-radamsa dict paths)
    ;; show command line stuff
@@ -380,14 +395,11 @@
          0)
       (else
          ;; print command line stuff
-         ;(for-each 
-         ;   (λ (thing) (print* (list (car thing) ": " (cdr thing))))
-         ;   (ff->list 
-         ;      (put dict 'samples paths)))
          
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
              (rs (seed->rands (getf dict 'seed)))
+             (record-meta (maybe-meta-logger (getf dict 'metadata) fail))
              (gen 
                (generator-priorities->generator rs
                   (getf dict 'generators) paths fail (getf dict 'count))))
@@ -404,9 +416,7 @@
                       (out fd meta (out meta))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
-                     ;(print "")
-                     ;(show " -> meta " meta)
-                     ;(show " => " n-written)
+                     (record-meta meta)
                      (loop rs muta pat out (- n 1)))))))))
 
 (λ (args)
