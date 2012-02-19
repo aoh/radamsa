@@ -87,9 +87,8 @@
          ((rs ll (port->stream rs stdin))
           (ll (if online? ll (force-ll ll)))) ;; preread if necessary
          (define (gen rs)
-            (values gen rs ll
-               (put #false 'generator 'stdin)))
-         gen)))
+            (values gen rs ll (put #false 'generator 'stdin)))
+         (values gen rs ll (put #false 'generator 'stdin)))))
 
 ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
 (define (output ll fd)
@@ -211,12 +210,9 @@
       ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
        (ps (map selection->priority ps))
        (fs (map priority->fuzzer ps)))
-      (show "fs: " fs)
       (if (all self fs) 
-         (mux-fuzzers
-            (sort car> fs))
+         (mux-fuzzers (sort car> fs))
          #false)))
-
 
 (define (string->generator-priorities str)
    (lets
@@ -247,10 +243,11 @@
          (fail "Bad generator priority"))))
 
 (define (generator-priorities->generator pris args fail n)
-   (show "generator priorities are " pris)
-   (let
-      ((gs (map (priority->generator args fail n) pris)))
-      (show "gs are: " gs)))
+   (let ((gs (map (priority->generator args fail n) pris)))
+      (cond
+         ((null? gs) (fail "no generators"))
+         ((null? (cdr gs)) (cdar gs))
+         (else (fail "cannot mux yet")))))
    
 (define (string->patterns str)
    (list 'patterns str))
@@ -324,32 +321,35 @@
          0)
       (else
          ;; print command line stuff
-         (for-each 
-            (λ (thing) (print* (list (car thing) ": " (cdr thing))))
-            (ff->list 
-               (put dict 'samples paths)))
+         ;(for-each 
+         ;   (λ (thing) (print* (list (car thing) ": " (cdr thing))))
+         ;   (ff->list 
+         ;      (put dict 'samples paths)))
          
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
              (rs (seed->rands (getf dict 'seed))))
             (let loop 
                ((rs rs)
-                (gen (generator-priorities->generator (getf dict 'generators) paths fail (getf dict 'count)))
+                (gen 
+                  (generator-priorities->generator 
+                     (getf dict 'generators) paths fail (getf dict 'count)))
+                (muta (getf dict 'mutations))
+
                 (out (get dict 'output 'bug))
                 (n (getf dict 'count)))
                (if (= n 0)
                   0
                   (lets
-                     ((gen rs ll (gen rs)) 
-                      (muta (getf dict 'mutations))
+                     ((gen rs ll meta (gen rs))
                       (pat  pat-once-dec)
                       (out fd meta (out))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
-                     (print "")
-                     (show " -> meta " meta)
-                     (show " => " n-written)
-                     (loop rs gen out (- n 1)))))))))
+                     ;(print "")
+                     ;(show " -> meta " meta)
+                     ;(show " => " n-written)
+                     (loop rs gen muta out (- n 1)))))))))
 
 (λ (args)
    (process-arguments (cdr args) 
