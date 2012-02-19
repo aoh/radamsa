@@ -1,8 +1,6 @@
 #!/usr/bin/ol --run
 
-;;;
 ;;; Radamsa - a general purpose fuzzer
-;;;
 
 (import (owl args))
 
@@ -10,6 +8,15 @@
 (define usage-text "Usage: radamsa [arguments] [file ...]")
 
 (define max-block-size (* 8 1024)) ; average half of this
+
+;; (#t(name func short long) ...) name → func | #false
+(define (choose options name)
+   (cond
+      ((null? options) #false)
+      ((equal? name (ref (car options) 1))
+         (ref (car options) 2))
+      (else
+         (choose (cdr options) name))))
 
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
 (define (pat-once-dec rs ll mutator meta)
@@ -70,18 +77,16 @@
 (define (port->stream rs port)
    (lets ((rs seed (rand rs 100000000000000000000)))
       (values rs
-         (stream-port (seed->rands seed) port))))
+         (λ () (stream-port (seed->rands seed) port)))))
 
 ;; dict paths → gen
-;; gen :: rs → gen' rs' ll meta
-(define (stdin-generator online?)
-   (λ (rs)
-      (lets 
-         ((rs ll (port->stream rs stdin))
-          (ll (if online? ll (force-ll ll)))) ;; preread if necessary
-         (define (gen rs)
-            (values gen rs ll (put #false 'generator 'stdin)))
-         (values gen rs ll (put #false 'generator 'stdin)))))
+;; gen :: rs → rs' ll meta
+(define (stdin-generator rs online?)
+   (lets 
+      ((rs ll (port->stream rs stdin))
+       (ll (if online? ll (force-ll ll)))) ;; preread if necessary
+      (λ (rs)
+         (values rs ll (put #false 'generator 'stdin)))))
 
 (define (file-streamer paths)
    (lets
@@ -94,7 +99,7 @@
              (port (open-input-file path)))
             (if port
                (lets ((rs ll (port->stream rs port)))
-                  (values gen rs ll 
+                  (values rs ll 
                      (list->ff (list '(generator . file) (cons 'source path)))))
                (begin   
                   (print*-to (list "Warning: failed to open given sample path " path) stderr)
@@ -154,11 +159,13 @@
          (put meta 'test (+ 1 (get meta 'test 0)))
          0)))
 
-(define (name->fuzzer str)
-   (cond
-      ((equal? str "test")
-         test-mutation)
-      (else
+(define *mutations*
+   (list
+      (tuple "test" test-mutation "Replace a byte with *" "nothing here")))
+
+(define (name->mutation str)
+   (or (choose *mutations* str)
+       (begin
          (print*-to (list "Unknown mutation: " str) stderr)
          #false)))
 
@@ -166,7 +173,7 @@
 (define (priority->fuzzer node)
    (cond
       ((not node) #false)
-      ((name->fuzzer (car node)) => 
+      ((name->mutation (car node)) => 
          (λ (func) (cons (cdr node) func)))
       (else #false)))
 
@@ -230,7 +237,7 @@
        (ps (map selection->priority ps)))
       (if (all self ps) ps #false)))
 
-(define (priority->generator args fail n)
+(define (priority->generator rs args fail n)
    ;; → (priority . generator) | #false
    (λ (pri)
       (if pri
@@ -242,7 +249,7 @@
                   (if (first (λ (x) (equal? x "-")) args #false)
                      ;; "-" was given, so start stdin generator + possibly preread
                      (cons priority
-                        (stdin-generator (= n 1)))
+                        (stdin-generator rs (= n 1)))
                      #false))
                ((equal? name "file")
                   (let ((args (keep (λ (x) (not (equal? x "-"))) args)))
@@ -253,17 +260,43 @@
                   (fail (list "Unknown data generator: " name)))))
          (fail "Bad generator priority"))))
 
-(define (generator-priorities->generator pris args fail n)
+; ((p . a) ...) n → x
+(define (choose-pri l n)
+   (let ((this (caar l)))
+      (if (< n this)
+         (cdar l)
+         (choose-pri (cdr l) (- n this)))))
+      
+;; ((pri . gen) ...) → (rs → gen output)
+(define (mux-generators gs)
+   (lets
+      ((gs (sort car> gs))
+       (n (fold + 0 (map car gs))))
+      (show "GS: " gs)
+      (show " -> " n)
+      (define (gen rs)
+         (lets
+            ((rs n (rand rs n)))
+            ((choose-pri gs n) rs)))
+      gen))
+
+(define (generator-priorities->generator rs pris args fail n)
    (lets 
-      ((gs (map (priority->generator args fail n) pris))
+      ((gs (map (priority->generator rs args fail n) pris))
        (gs (keep self gs)))
       (cond
          ((null? gs) (fail "no generators"))
          ((null? (cdr gs)) (cdar gs))
-         (else (fail "cannot mux yet")))))
-   
+         (else (mux-generators gs)))))
+
+(define *patterns*
+   (list
+      (tuple "od" pat-once-dec 
+         "Mutate once" 
+         "Make one mutation with gradually lowering probability")))
+
 (define (string->patterns str)
-   (list 'patterns str))
+   (choose *patterns* str))
 
 (define (stdout-stream meta)
    (values stdout-stream stdout 
@@ -290,7 +323,7 @@
             default "test=42")
         (patterns "-p" "--patterns" cook ,string->patterns
             comment "Which mutation patterns to use"
-            default "trololo")
+            default "od")
         (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
             comment "Which data generators to use"
             default "file,stdin=100")
@@ -312,6 +345,17 @@
 (define (time-seed)
    (time-ms))
 
+(define (show-options)
+   (print "Mutations")
+   (for-each (λ (opt) (print* (list "  " (ref opt 1) ": " (ref opt 3)))) *mutations*)
+   (print "")
+   (print "Mutation patterns")
+   (for-each (λ (opt) (print* (list "  " (ref opt 1) ": " (ref opt 3)))) *patterns*)
+   (print "")
+   (print "Generators")
+   (print " stdin: read data from standard input if no paths are given or - is among them")
+   (print " file: read data from given files"))
+
 ;; dict args → rval
 (define (start-radamsa dict paths)
    ;; show command line stuff
@@ -324,12 +368,15 @@
          (start-radamsa 
             (put dict 'seed (or (urandom-seed) (time-seed)))
             paths))
+      ((getf dict 'version)
+         (print version-str)
+         0)
       ((getf dict 'help)
          (print usage-text)
          (print-rules command-line-rules)
          0)
       ((getf dict 'list)
-         (print "Would list stuff here.")
+         (show-options)
          0)
       (else
          ;; print command line stuff
@@ -340,27 +387,27 @@
          
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
-             (rs (seed->rands (getf dict 'seed))))
+             (rs (seed->rands (getf dict 'seed)))
+             (gen 
+               (generator-priorities->generator rs
+                  (getf dict 'generators) paths fail (getf dict 'count))))
             (let loop 
                ((rs rs)
-                (gen 
-                  (generator-priorities->generator 
-                     (getf dict 'generators) paths fail (getf dict 'count)))
                 (muta (getf dict 'mutations))
+                (pat (getf dict 'patterns))
                 (out (get dict 'output 'bug))
                 (n (getf dict 'count)))
                (if (= n 0)
                   0
                   (lets
-                     ((gen rs ll meta (gen rs))
-                      (pat  pat-once-dec)
+                     ((rs ll meta (gen rs))
                       (out fd meta (out meta))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
                      ;(print "")
                      ;(show " -> meta " meta)
                      ;(show " => " n-written)
-                     (loop rs gen muta out (- n 1)))))))))
+                     (loop rs muta pat out (- n 1)))))))))
 
 (λ (args)
    (process-arguments (cdr args) 
