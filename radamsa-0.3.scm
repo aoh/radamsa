@@ -14,6 +14,8 @@
 (define version-str "Radamsa 0.3a") ;; aka funny fold
 (define usage-text "Usage: radamsa [arguments] [file ...]")
 
+(define max-block-size (* 8 1024))
+
 ;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
 (define (pat-once-dec rs ll mutator meta)
    (lets
@@ -39,24 +41,55 @@
          (list (tuple rs mutator meta)))))
 
 
+
+(define (rand-block-size rs)
+   (lets ((rs n (rand rs max-block-size)))
+      (values rs (max n 4))))
+
+;; bvec|F bvec → bvec
+(define (merge head tail)
+   (if head
+      (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
+      tail))
+
+(define (stream-port rs port)
+   (lets ((rs first (rand-block-size rs)))
+      (let loop ((rs rs) (last #false) (wanted first)) ;; 0 = block ready (if any)
+         (let ((block (interact port wanted)))
+            (cond
+               ((eof? block) ;; end of stream
+                  (if (not (eq? port stdin)) (close-port port))
+                  (if last (list last) null))
+               ((not block) ;; read error
+                  (if (not (eq? port stdin)) (close-port port))
+                  (if last (list last) null))
+               ((eq? (sizeb block) (+ wanted 1))
+                  ;; a block of required (deterministic) size is ready
+                  (lets
+                     ((block (merge last block))
+                      (rs next (rand-block-size rs)))
+                     (pair block (loop rs #false next))))
+               (else
+                  (loop rs (merge last block)
+                     (- wanted (sizeb block)))))))))
+
+;; rs port → rs' (bvec ...), closes port unless stdin
+(define (port->stream rs port)
+   (lets ((rs seed (rand rs 100000000000000000000)))
+      (values rs
+         (stream-port (seed->rands seed) port))))
+
 ;; dict paths → gen
-;; gen :: rs → gen' rs' ll
-(define (dummy-generator dict paths)
-   (define (gen rs)
-      (lets
-         ((rs seed (rand rs #xffffffffffff)))
-         (values gen rs
-            (let loop ((rs (seed->rands seed)) (len 0))
-               (lets ((rs n (rand rs 10)))
-                  (if (and (eq? n 0) (> len 0))
-                     null
-                     (lets
-                        ((rs lst (random-numbers rs 26 n))  ;; get some alphabet posns
-                         (lst (map (λ (x) (+ x #\a)) lst))) ;; scale to a-z
-                        (pair
-                           (list->vector (cons #\space lst))
-                           (loop rs (+ len 1))))))))))
-   gen)
+;; gen :: rs → gen' rs' ll meta
+(define (stdin-generator online?)
+   (λ (rs)
+      (lets 
+         ((rs ll (port->stream rs stdin))
+          (ll (if online? ll (force-ll ll)))) ;; preread if necessary
+         (define (gen rs)
+            (values gen rs ll
+               (put #false 'generator 'stdin)))
+         gen)))
 
 ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
 (define (output ll fd)
@@ -74,18 +107,6 @@
                   (values rs muta meta n)))
             (else
                (error "output: bad node: " x))))))
-
-(define (stdout-stream)
-   (values stdout-stream stdout 
-      (put #false 'output 'stdout))) 
-
-;; args → (out :: → out' fd meta) v null | #false
-(define (dummy-output-stream arg)
-   (if (equal? arg "-")
-      stdout-stream
-      (begin
-         (show "I can't yet output " arg)
-         #false)))
 
 (define (selection->priority lst)
    (let ((l (length lst)))
@@ -204,11 +225,26 @@
       (if (all self ps) ps #false)))
 
 (define (priority->generator args fail n)
+   ;; → (priority . generator) | #false
    (λ (pri)
-      (show "pri node is " pri)
       (if pri
-         'ok
-         (fail "Bad generator priority."))))
+         (lets ((name priority pri))
+            (cond
+               ((equal? name "stdin")
+                  ;; a generator to read data from stdin
+                  ;; check n and preread if necessary
+                  (if (first (λ (x) (equal? x "-")) args #false)
+                     ;; "-" was given, so start stdin generator + possibly preread
+                     (cons priority
+                        (stdin-generator (= n 1)))
+                     #false))
+               ((equal? name "file")
+                  (if (null? args)
+                     #false ; no samples given, don't start this one
+                     (cons priority (list 'sample-streamer args))))
+               (else
+                  (fail (list "Unknown data generator: " name)))))
+         (fail "Bad generator priority"))))
 
 (define (generator-priorities->generator pris args fail n)
    (show "generator priorities are " pris)
@@ -218,6 +254,19 @@
    
 (define (string->patterns str)
    (list 'patterns str))
+
+(define (stdout-stream)
+   (values stdout-stream stdout 
+      (put #false 'output 'stdout))) 
+
+;; args → (out :: → out' fd meta) v null | #false
+(define (dummy-output-stream arg)
+   (if (equal? arg "-")
+      stdout-stream
+      (begin
+         (show "I can't yet output " arg)
+         #false)))
+
 
 (define command-line-rules
    (cl-rules
@@ -282,11 +331,10 @@
          
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
-             (rs (seed->rands (getf dict 'seed)))
-             (_gen (generator-priorities->generator (getf dict 'generators) paths fail (getf dict 'count))))
+             (rs (seed->rands (getf dict 'seed))))
             (let loop 
                ((rs rs)
-                (gen (dummy-generator dict paths))
+                (gen (generator-priorities->generator (getf dict 'generators) paths fail (getf dict 'count)))
                 (out (get dict 'output 'bug))
                 (n (getf dict 'count)))
                (if (= n 0)
