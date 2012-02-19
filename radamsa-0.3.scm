@@ -112,7 +112,8 @@
                (mail fd x)
                (loop ll (+ n (vec-len x))))
             ((tuple? x)
-               ((if (eq? fd stdout) flush-port close-port) fd)
+               (flush-port fd)
+               (if (eq? fd stdout) (wait 1000) (close-port fd))
                (lets ((rs muta meta x))
                   (values rs muta meta n)))
             (else
@@ -207,7 +208,7 @@
                            (if (equal? (car ll) (car mll)) 
                               ;; try something else if no changes, but update state
                               (loop (cdr pfs) out rs)
-                              (values (mux-fuzzers (append out pfs)) rs mll mmeta)))))))
+                              (values (mux-fuzzers (append out (cdr pfs))) rs mll mmeta)))))))
             ((null? ll)
                (values (mux-fuzzers fs) rs ll meta))
             (else 
