@@ -15,22 +15,14 @@ bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
-radamsa.c: *.l
-	ol $(OFLAGS) -o radamsa.c radamsa.l
+radamsa.c: rad/*.scm
+	ol $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp bin/radamsa $(DESTDIR)$(PREFIX)/bin
 	-mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
 	cat doc/radamsa.1 | gzip -9 > $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz
-
-bytecode:
-	# make a plain bytecode dump, which gcc compiles *much* faster
-	make OFLAGS="-O0" bin/radamsa
-
-test:
-	test -f .seal-of-quality && rm .seal-of-quality || true
-	make .seal-of-quality
 
 clean:
 	-rm radamsa.c bin/* .seal-of-quality
@@ -39,13 +31,6 @@ clean:
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
-
-todo:
-	ol -n *.l
-
-bin/radamsa-0.3: radamsa-0.3.scm
-	ol -O1 -o radamsa-0.3.c radamsa-0.3.scm
-	gcc -O2 -o bin/radamsa-0.3 radamsa-0.3.c
 
 get-owl:
 	# need to install owl to be able to compile radamsa
