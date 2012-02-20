@@ -7,7 +7,10 @@
 (define version-str "Radamsa 0.3a") ;; aka funny fold
 (define usage-text "Usage: radamsa [arguments] [file ...]")
 
+;; static parameters
 (define max-block-size (* 8 1024)) ; average half of this
+(define initial-ip 24)             ; initial max 1/n for basic patterns
+(define remutate-probability 2/3)
 
 ;; (#t(name func short long) ...) name → func | #false
 (define (choose options name)
@@ -18,10 +21,9 @@
       (else
          (choose (cdr options) name))))
 
-;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
-(define (pat-once-dec rs ll mutator meta)
+(define (mutate-once rs ll mutator meta cont)
    (lets
-      ((rs ip (rand rs 24)) ;; initial inverse probability, magic value
+      ((rs ip (rand rs initial-ip)) ;; initial inverse probability, magic value
        (this ll (uncons ll #false)))
       (if this
          (let loop ((rs rs) (this this) (ll ll) (ip ip))
@@ -34,13 +36,27 @@
                         ((meta (put meta 'pattern 'dummy))
                          (ll (cons this ll))
                          (mutator rs ll meta (mutator rs ll meta)))
-                        ;; use a cont here later as in 0.2
-                        (lappend ll (list (tuple rs mutator meta))))
+                        (cont ll rs mutator meta))
                      ;; keep moving
                      (pair this
                         (loop rs (car ll) (cdr ll) (+ ip 1)))))))
          ;; no data to work on
-         (list (tuple rs mutator meta)))))
+         (cont null rs mutator meta))))
+
+;; pat :: rs ll muta meta → ll' ++ (list (tuple rs mutator meta))
+(define (pat-once-dec rs ll mutator meta)
+   (mutate-once rs ll mutator meta 
+      (λ (ll rs mutator meta)
+         (lappend ll (list (tuple rs mutator meta))))))
+
+;; 1 or more mutations
+(define (pat-many-dec rs ll mutator meta)
+   (mutate-once rs ll mutator meta
+      (λ (ll rs mutator meta)
+         (lets ((rs muta? (rand-occurs? rs remutate-probability)))
+            (if muta? 
+               (pat-many-dec rs ll mutator meta)
+               (lappend ll (list (tuple rs mutator meta))))))))
 
 (define (rand-block-size rs)
    (lets ((rs n (rand rs max-block-size)))
@@ -293,10 +309,36 @@
    (list
       (tuple "od" pat-once-dec 
          "Mutate once" 
-         "Make one mutation with gradually lowering probability")))
+         "Make one mutation with gradually lowering probability")
+      (tuple "nd" pat-many-dec 
+         "Mutate possibly many times" 
+         "Make possibly several mutations with gradually lowering probability")))
+
+(define (priority->pattern pri)
+   (let ((func (choose *patterns* (car pri))))
+      (if func
+         (cons (cdr pri) func)
+         (begin
+            (print*-to (list "Unknown pattern: " (cdr pri)) stderr)
+            #false))))
+
+;; ((pri . pat) ...) → (rs ll muta meta → <pattern output>)
+(define (mux-patterns ps)
+   (lets
+      ((ps (sort car> ps))
+       (n (fold + 0 (map car ps))))
+      (λ (rs ll muta meta)
+         (lets ((rs n (rand rs n)))
+            ((choose-pri ps n) rs ll muta meta)))))
 
 (define (string->patterns str)
-   (choose *patterns* str))
+   (lets
+      ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
+       (ps (map selection->priority ps))
+       (ps (map priority->pattern ps)))
+      (if (all self ps) 
+         (mux-patterns ps)
+         #false)))
 
 (define (stdout-stream meta)
    (values stdout-stream stdout 
@@ -323,7 +365,7 @@
             default "test=42")
         (patterns "-p" "--patterns" cook ,string->patterns
             comment "Which mutation patterns to use"
-            default "od")
+            default "od,nd")
         (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
             comment "Which data generators to use"
             default "file,stdin=100")
@@ -348,13 +390,13 @@
    (time-ms))
 
 (define (show-options)
-   (print "Mutations")
+   (print "Mutations (-m)")
    (for-each (λ (opt) (print* (list "  " (ref opt 1) ": " (ref opt 3)))) *mutations*)
    (print "")
-   (print "Mutation patterns")
+   (print "Mutation patterns (-p)")
    (for-each (λ (opt) (print* (list "  " (ref opt 1) ": " (ref opt 3)))) *patterns*)
    (print "")
-   (print "Generators")
+   (print "Generators (-g)")
    (print " stdin: read data from standard input if no paths are given or - is among them")
    (print " file: read data from given files"))
 
@@ -367,9 +409,7 @@
                   (close-port port)
                   (mail port (serialize stuff '(10)))))
             (fail "Cannot open metadata log file")))
-      (λ (stuff)
-         (show "META: " stuff))))
-
+      (λ (stuff) stuff)))
 
 ;; dict args → rval
 (define (start-radamsa dict paths)
@@ -394,12 +434,11 @@
          (show-options)
          0)
       (else
-         ;; print command line stuff
-         
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
              (rs (seed->rands (getf dict 'seed)))
              (record-meta (maybe-meta-logger (getf dict 'metadata) fail))
+             (n (getf dict 'count))
              (gen 
                (generator-priorities->generator rs
                   (getf dict 'generators) paths fail (getf dict 'count))))
@@ -408,16 +447,17 @@
                 (muta (getf dict 'mutations))
                 (pat (getf dict 'patterns))
                 (out (get dict 'output 'bug))
-                (n (getf dict 'count)))
-               (if (= n 0)
+                (p 1))
+               (if (< n p)
                   0
                   (lets
                      ((rs ll meta (gen rs))
+                      (meta (put meta 'nth p))
                       (out fd meta (out meta))
                       (rs muta meta n-written 
                         (output (pat rs ll muta meta) fd)))
                      (record-meta meta)
-                     (loop rs muta pat out (- n 1)))))))))
+                     (loop rs muta pat out (+ p 1)))))))))
 
 (λ (args)
    (process-arguments (cdr args) 
