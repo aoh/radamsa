@@ -163,15 +163,29 @@
             #false))))
 
 ;; mutation :: rs ll meta → mutation' rs' ll' meta' delta
-(define (test-mutation rs ll meta)
+(define (add-a rs ll meta)
    (lets
       ((bvec (car ll))
        (rs p (rand rs (vec-len bvec)))
        (bvec
          (list->byte-vector
-            (lset (vector->list bvec) p #\*))))
+            (lset (vector->list bvec) p #\a))))
       (values
-         test-mutation
+         add-a
+         rs
+         (cons bvec (cdr ll))
+         (put meta 'test (+ 1 (get meta 'test 0)))
+         0)))
+
+(define (add-b rs ll meta)
+   (lets
+      ((bvec (car ll))
+       (rs p (rand rs (vec-len bvec)))
+       (bvec
+         (list->byte-vector
+            (lset (vector->list bvec) p #\b))))
+      (values
+         add-b
          rs
          (cons bvec (cdr ll))
          (put meta 'test (+ 1 (get meta 'test 0)))
@@ -179,7 +193,8 @@
 
 (define *mutations*
    (list
-      (tuple "test" test-mutation "Replace a byte with *" "nothing here")))
+      (tuple "a" add-a "Replace a byte with a" "nothing here")
+      (tuple "b" add-b "Replace a byte with b" "nothing here")))
 
 (define (name->mutation str)
    (or (choose *mutations* str)
@@ -244,7 +259,9 @@
    (lets
       ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
        (ps (map selection->priority ps))
+       (ps (map (λ (x) (if x (cons (car x) (* (cdr x) 10)) x)) ps)) ; scale priorities to 10x
        (fs (map priority->fuzzer ps)))
+      (print fs)
       (if (all self fs) 
          (mux-fuzzers (sort car> fs))
          #false)))
@@ -362,7 +379,7 @@
         (seed "-s" "--seed" cook ,string->integer comment "Random seed (number, default random)")
         (mutations "-m" "--mutations" cook ,string->mutator 
             comment "Which mutations to use"
-            default "test=42")
+            default "a,b")
         (patterns "-p" "--patterns" cook ,string->patterns
             comment "Which mutation patterns to use"
             default "od,nd")
