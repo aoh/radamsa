@@ -9,6 +9,7 @@
 
    (export
       max-block-size
+      avg-block-size
       initial-ip
       remutate-probability
       selection->priority
@@ -18,9 +19,12 @@
       )
 
    (begin
-      (define max-block-size (* 8 1024)) ; average half of this
-      (define initial-ip 24)             ; initial max 1/n for basic patterns
-      (define remutate-probability 2/3)
+
+      (define avg-block-size 4096)        ; average block size when streaming sample data
+      (define initial-ip 24)              ; initial max 1/n for basic patterns
+      (define remutate-probability 2/3)   ; probability of each mutation being followed by a new one in nd
+      
+      (define max-block-size (* 2 avg-block-size))
 
       ;; (#t(name func short long) ...) name → func | #false
       (define (choose options name)

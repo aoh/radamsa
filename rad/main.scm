@@ -27,7 +27,7 @@
               (seed "-s" "--seed" cook ,string->integer comment "Random seed (number, default random)")
               (mutations "-m" "--mutations" cook ,string->mutator 
                   comment "Which mutations to use"
-                  default "a,b")
+                  default ,default-mutations) ;; these come from (rad mutations)
               (patterns "-p" "--patterns" cook ,string->patterns
                   comment "Which mutation patterns to use"
                   default "od,nd")
