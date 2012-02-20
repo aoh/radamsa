@@ -2,6 +2,8 @@
 
 ;;; Radamsa - a general purpose fuzzer
 
+;; todo: mutator scale should probably be kept at 1-100 or 1-1000.
+
 (import (owl args))
 
 (define version-str "Radamsa 0.3a") ;; aka funny fold
@@ -169,13 +171,15 @@
        (rs p (rand rs (vec-len bvec)))
        (bvec
          (list->byte-vector
-            (lset (vector->list bvec) p #\a))))
+            (led (vector->list bvec) p 
+               (λ (x) (if (eq? x 10) x #\a)))))
+       (rs delta (rand-range rs -1 2)))
       (values
          add-a
          rs
          (cons bvec (cdr ll))
          (put meta 'test (+ 1 (get meta 'test 0)))
-         0)))
+         delta)))
 
 (define (add-b rs ll meta)
    (lets
@@ -183,13 +187,15 @@
        (rs p (rand rs (vec-len bvec)))
        (bvec
          (list->byte-vector
-            (lset (vector->list bvec) p #\b))))
+            (led (vector->list bvec) p 
+               (λ (x) (if (eq? x 10) x #\b)))))
+       (rs delta (rand-range rs -1 2)))
       (values
          add-b
          rs
          (cons bvec (cdr ll))
          (put meta 'test (+ 1 (get meta 'test 0)))
-         0)))
+         delta)))
 
 (define *mutations*
    (list
@@ -214,7 +220,7 @@
 (define (adjust-priority pri delta)
    (if (eq? delta 0)
       pri
-      (max 1 (min 1000 (+ pri delta)))))
+      (max 1 (min 100 (+ pri delta)))))
 
 (define (car> a b) 
    (> (car a) (car b)))
@@ -254,6 +260,7 @@
             (else 
                (loop (ll)))))))
 
+
 ;; str → mutator | #f
 (define (string->mutator str)
    (lets
@@ -261,7 +268,6 @@
        (ps (map selection->priority ps))
        (ps (map (λ (x) (if x (cons (car x) (* (cdr x) 10)) x)) ps)) ; scale priorities to 10x
        (fs (map priority->fuzzer ps)))
-      (print fs)
       (if (all self fs) 
          (mux-fuzzers (sort car> fs))
          #false)))
