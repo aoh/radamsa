@@ -373,13 +373,53 @@
                      meta 0))))
          self)
 
+      ;; overwrite one node with one of the others
+      (define (sed-tree-swap-one rs ll meta)
+         (lets
+            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+             (subs (sublists lst)))
+            (if (length< subs 3)
+               ;; drop priority, nothing cool here
+               (values sed-tree-swap-one rs ll meta -1)
+               (lets
+                  ((rs toswap (reservoir-sample rs subs 2))
+                   (a (car toswap))
+                   (b (cadr toswap))
+                   (rs delta (rand rs 2))
+                   (lst (edit-sublist lst a (λ (node) (cons b (cdr node))))))
+                  (values sed-tree-swap-one rs
+                     (flush-bvecs (flatten lst null) (cdr ll))
+                     (inc meta 'tree-swap-one)
+                     delta)))))
+
+      ;; pairwise swap of two nodes
+      (define (sed-tree-swap-two rs ll meta)
+         (lets
+            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+             (subs (sublists lst)))
+            (if (length< subs 3)
+               ;; drop priority, nothing cool here
+               (values sed-tree-swap-two rs ll meta -1)
+               (lets
+                  ((rs toswap (reservoir-sample rs subs 2))
+                   (a (car toswap))
+                   (b (cadr toswap))
+                   (rs delta (rand rs 2))
+                   (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
+                   (lst (edit-sublists lst mapping)))
+                  (values sed-tree-swap-one rs
+                     (flush-bvecs (flatten lst null) (cdr ll))
+                     (inc meta 'tree-swap-two)
+                     delta)))))
+
       (define sed-tree-del (sed-tree-op (λ (node) null) 'tree-del))
 
-      (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node)) 'tree-dup))
+      (define sed-tree-dup (sed-tree-op (λ (node) (cons (car node) node)) 'tree-dup))
 
       ; [i]nsert
       ; [r]epeat
       ; [d]rop
+      ; [s]wap
 
       (define *mutations*
          (list
@@ -403,7 +443,10 @@
 
             ;; tree-level
 
-            (tuple "td" sed-tree-del "delete a branch")
+            (tuple "td" sed-tree-del "delete a node")
+            (tuple "tr2" sed-tree-dup "duplicate a node")
+            (tuple "ts1" sed-tree-swap-one "swap one node with another one")
+            (tuple "ts2" sed-tree-swap-two "swap two nodes pairwise")
 
             ;; utf-8
 
@@ -414,7 +457,7 @@
             ))
 
       (define default-mutations
-         "num=10,td=5,bd,bf,bi,br,bp,bei,bed,ber")
+         "num=10,td=5,tr2=5,ts1=5,ts2=5,bd,bf,bi,br,bp,bei,bed,ber")
 
       (define (name->mutation str)
          (or (choose *mutations* str)

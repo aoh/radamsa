@@ -16,6 +16,7 @@
       choose
       choose-pri
       car>
+      length<
       )
 
    (begin
@@ -25,6 +26,13 @@
       (define remutate-probability 2/3)   ; probability of each mutation being followed by a new one in nd
       
       (define max-block-size (* 2 avg-block-size))
+
+      ;; (< (length l) n) for potentially long lists
+      (define (length< l n)
+         (cond
+            ((eq? n 0) #false)
+            ((null? l) #true)
+            (else (length< (cdr l) (- n 1)))))
 
       ;; (#t(name func short long) ...) name → func | #false
       (define (choose options name)
