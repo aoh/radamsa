@@ -5,7 +5,7 @@ CFLAGS=-Wall -O3
 OFLAGS=-O1
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
-everything: bin/radamsa #.seal-of-quality
+everything: bin/radamsa .seal-of-quality
 
 bin/radamsa: radamsa.c
 	mkdir -p bin

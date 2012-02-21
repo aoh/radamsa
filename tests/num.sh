@@ -1,10 +1,4 @@
 #!/bin/sh
 
-echo -n "("
-while true
-do
-   echo -n "-"
-   echo "254 + 256 + 1 + 2" | $@ -t num | grep -q 255 && break
-done
+echo " 100 + 100 + 100 " | $@ -m num -n 500 -p od | grep -q " 101 " || exit 1
 
-echo -n ") "
