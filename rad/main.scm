@@ -24,25 +24,26 @@
 
       (define command-line-rules
          (cl-rules
-            `((help "-h" "--help" comment "Show this thing.")
+            `((help "-h" "--help" comment "show this thing")
               (output "-o" "--output" has-arg default "-" cook ,string->outputs
-                  comment "Where to put the generated data")
+                  comment "where to put the generated data")
               (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
-                  default "1" comment "How many outputs to generate")
-              (seed "-s" "--seed" cook ,string->integer comment "Random seed (number, default random)")
+                  default "1" comment "how many outputs to generate")
+              (seed "-s" "--seed" cook ,string->integer comment "random seed (number, default random)")
               (mutations "-m" "--mutations" cook ,string->mutator 
-                  comment "Which mutations to use"
+                  comment "which mutations to use"
                   default ,default-mutations) ;; these come from (rad mutations)
               (patterns "-p" "--patterns" cook ,string->patterns
-                  comment "Which mutation patterns to use"
-                  default "od,nd")
+                  comment "which mutation patterns to use"
+                  default ,default-patterns)
               (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
-                  comment "Which data generators to use"
+                  comment "which data generators to use"
                   default "file,stdin=100")
               (metadata "-M" "--meta" has-arg
-                  comment "Save metadata about generated files to this file")
-              (list "-l" "--list" comment "List mutations, patterns and generators")
-              (version "-V" "--version" comment "Show version information."))))
+                  comment "save metadata about generated files to this file")
+              (list "-l" "--list" comment "list mutations, patterns and generators")
+              (verbose "-v" "--verbose" comment "talk to me more")
+              (version "-V" "--version" comment "show version information"))))
 
       ;; () → string
       (define (urandom-seed)
@@ -81,6 +82,11 @@
                   (fail "Cannot open metadata log file")))
             (λ (stuff) stuff)))
 
+      (define (maybe-printer verbose)
+         (if verbose
+            (λ (args) (print*-to args stderr))
+            (λ (args) args)))
+
       ;; dict args → rval
       (define (start-radamsa dict paths)
          ;; show command line stuff
@@ -108,6 +114,7 @@
                   ((fail (λ (why) (print why) (ret 1)))
                    (rs (seed->rands (getf dict 'seed)))
                    (record-meta (maybe-meta-logger (getf dict 'metadata) fail))
+                   (verb (maybe-printer (getf dict 'verbose)))
                    (n (getf dict 'count))
                    (gen 
                      (generator-priorities->generator rs
@@ -126,8 +133,10 @@
                             (meta (put meta 'nth p))
                             (out fd meta (out meta))
                             (rs muta meta n-written 
-                              (output (pat rs ll muta meta) fd)))
+                              (output (pat rs ll muta meta) fd))
+                           (meta (put meta 'length n-written)))
                            (record-meta (ff->list meta))
+                           (verb (list "Made " meta))
                            (loop rs muta pat out (+ p 1)))))))))
 
       (define (radamsa args)
