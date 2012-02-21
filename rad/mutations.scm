@@ -247,13 +247,146 @@
                   (cdr ll))
                (inc meta 'byte-perm) 0)))
 
+      ;;;
+      ;;; Guessed Parse-tree Mutations
+      ;;;
+
+      (define usual-delims ; <- could be settable from command line
+         (list->ff
+            '((40 . 41)    ; ()
+              (91 . 93)    ; []
+              (60 . 62)    ; <>
+              (123 . 125)  ; {}
+              (34 . 34)    ; ""
+              (39 . 39)))) ; ''
+
+      ;; → lst #false = ran out of data trying to parse up to close, but lst is the same with partial parsing
+      ;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
+      (define (grow lst close rout)
+         (if (null? lst)
+            (values (reverse rout) #false) ;; out of data, didn't find close. return partial parse.
+            (lets ((hd lst lst))
+               (cond
+                  ((eq? hd close)
+                     ;; match complete, return with rest of list
+                     (values (reverse (cons close rout)) lst))
+                  ((get usual-delims hd #false) =>
+                     (λ (next-close)
+                        (lets ((this lst (grow lst next-close null)))
+                           (if lst ;; we didn't run out of data and this is a single tree node
+                              (grow lst close (cons (cons hd this) rout))
+                              ;; we ran out of data. this is a list of partial parses (having the data of
+                              ;; lst after hd in some form) which we want to preserve as tail
+                              (values (append (reverse rout) (cons hd this)) #false)))))
+                  (else ;; add one byte to this node
+                     (grow lst close (cons hd rout)))))))
+
+      ;; count how many list nodes are in a tree structure
+      (define (count-nodes lst)
+         (let loop ((lst lst) (n 0))
+            (cond
+               ((null? lst) n)
+               ((pair? (car lst))
+                  (loop (cdr lst)
+                     (loop (car lst) (+ n 1))))
+               (else
+                  (loop (cdr lst) n)))))
+
+      ;; lst → a list of lists (not counting tails) in lst, when walked recursively, not counting lst itself
+      (define (sublists lst)
+         (let loop ((lst lst) (found null))
+            (if (null? lst)
+               found
+               (let ((hd (car lst)))
+                  (if (pair? hd)
+                     (loop (cdr lst)
+                        (loop hd (cons hd found)))
+                     (loop (cdr lst) found))))))
+
+      (define (pick-sublist rs lst)
+         (let ((subs (sublists lst)))
+            (if (null? subs)
+               (values rs #false)
+               (lets ((rs n (rand rs (length subs))))
+                  (values rs (lref subs n))))))
+
+      ;; replace the node (sub . tail) with (op (sub . tail))
+      (define (edit-sublist lst sub op)
+         (if (pair? lst)
+            (if (eq? (car lst) sub)
+               (cons (op lst) (cdr lst))
+               (cons (edit-sublist (car lst) sub op)
+                     (edit-sublist (cdr lst) sub op)))
+            lst))
+
+      ;; lst (ff of node → (node → node)) → lst' ; <- could also be done with a recursive-mapn
+      (define (edit-sublists lst opff)
+         (if (pair? lst)
+            (let ((hd (car lst)))
+               (if (pair? hd)
+                  (let ((maybe-op (get opff hd #false)))
+                     (if maybe-op
+                        (cons (maybe-op (car lst))
+                           (edit-sublists (cdr lst) opff))
+                        (cons (edit-sublists (car lst) opff)
+                           (edit-sublists (cdr lst) opff))))
+                  (cons (car lst)
+                     (edit-sublists (cdr lst) opff))))
+            lst))
+
+      (define (partial-parse lst)
+         (let loop ((lst lst) (rout null))
+            (if (null? lst)
+               (reverse rout)
+               (lets ((closep (get usual-delims (car lst) #false)))
+                  (if closep
+                     (lets
+                        ((hd (car lst))
+                         (this lst (grow (cdr lst) closep null)))
+                        (if lst
+                           (loop lst (cons (cons hd this) rout))
+                           (append (reverse rout) (cons hd this))))
+                     (loop (cdr lst) (cons (car lst) rout)))))))
+
+      (define (flatten node tl)
+         (cond
+            ((null? node) tl)
+            ((pair? node) (flatten (car node) (flatten (cdr node) tl)))
+            (else (cons node tl))))
+
+     (define (sed-byte-inc rs ll meta) ;; increment a byte value mod 256
+         (lets ((rs p (rand rs (sizeb (car ll)))))
+            (values sed-byte-inc rs
+               (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll))
+               (inc meta 'byte-inc) 0)))
+
+      (define (sed-tree-op op name)
+         (define (self rs ll meta)
+            (let ((meta (inc meta name)))
+               (lets
+                  ((lst (partial-parse (vector->list (car ll))))
+                   ;(_ (if (not (equal? (vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
+                   (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
+                   (lst (edit-sublist lst sub op)))
+                  (values self rs
+                     (flush-bvecs (flatten lst null) (cdr ll))
+                     meta 0))))
+         self)
+
+      (define sed-tree-del (sed-tree-op (λ (node) null) 'tree-del))
+
+      (define sed-tdup (sed-tree-op (λ (node) (cons (car node) node)) 'tree-dup))
+
       ; [i]nsert
       ; [r]epeat
       ; [d]rop
 
       (define *mutations*
          (list
-            (tuple "num" sed-num "modify a textual number")
+
+            ;;; stateless (apart from priorities)
+
+            ;; byte-level 
             (tuple "bd" sed-byte-drop "drop a byte")
             (tuple "bf" sed-byte-flip "flip one bit")
             (tuple "bi" sed-byte-insert "insert a random byte")
@@ -262,10 +395,26 @@
             (tuple "bei" sed-byte-inc "increment a byte by one")
             (tuple "bed" sed-byte-dec "decrement a byte by one")
             (tuple "ber" sed-byte-dec "swap a byte with a random one")
+
+            ;; special
+            (tuple "num" sed-num "modify a textual number")
+
+            ;; line-level
+
+            ;; tree-level
+
+            (tuple "td" sed-tree-del "delete a branch")
+
+            ;; utf-8
+
+            ;; lexical?
+
+            ;;; incrementals
+
             ))
 
       (define default-mutations
-         "num=20,bd,bf,bi,br,bp,bei,bed,ber")
+         "num=10,td=5,bd,bf,bi,br,bp,bei,bed,ber")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
