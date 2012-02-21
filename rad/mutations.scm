@@ -247,6 +247,8 @@
                   (cdr ll))
                (inc meta 'byte-perm) 0)))
 
+
+
       ;;;
       ;;; Guessed Parse-tree Mutations
       ;;;
@@ -418,10 +420,51 @@
 
       (define sed-tree-dup (sed-tree-op (λ (node) (cons (car node) node)) 'tree-dup))
 
+
+      ;;; tree stutter
+
+      (define (repeat-path parent child n)
+         (if (< n 2)
+            parent ; <- causes at least 1 extra path to be made, saves one useless replace cycle
+            (edit-sublist parent child
+               (λ (here) (cons (repeat-path parent child (- n 1)) (cdr here))))))
+
+      (define (choose-child rs node)
+         (let ((subs (sublists node)))
+            (if (null? subs)
+               (values rs #false)
+               (rand-elem rs subs))))
+
+      (define (choose-stutr-nodes rs subs)
+         (if (null? subs)
+            (values rs #false #false) ;; no child nodes
+            (lets ((rs childp (choose-child rs (car subs))))
+               (if childp
+                  (values rs (car subs) childp)
+                  (choose-stutr-nodes rs (cdr subs))))))
+
+      (define (sed-tree-stutter rs ll meta)
+         (lets
+            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+             (subs (sublists lst))
+             (rs subs (random-permutation rs subs))
+             (rs parent child (choose-stutr-nodes rs subs))
+             (rs n-reps (rand-log rs 10)))
+            (if parent
+               (lets
+                  ((lst
+                     (edit-sublist lst child
+                        (λ (node) (cons (repeat-path parent child n-reps) (cdr node))))))
+                  (values sed-tree-stutter rs 
+                     (flush-bvecs (flatten lst null) (cdr ll))
+                     (inc meta 'tree-stutter)
+                     0))
+               (values sed-tree-stutter rs ll meta -1))))
+
       ; [i]nsert
       ; [r]epeat
       ; [d]rop
-      ; [s]wap
+      ; [s]wap/[s]tutter
 
       (define *mutations*
          (list
@@ -449,6 +492,7 @@
             (tuple "tr2" sed-tree-dup "duplicate a node")
             (tuple "ts1" sed-tree-swap-one "swap one node with another one")
             (tuple "ts2" sed-tree-swap-two "swap two nodes pairwise")
+            (tuple "tr"  sed-tree-stutter "repeat a path of the parse tree")
 
             ;; utf-8
 
@@ -459,7 +503,7 @@
             ))
 
       (define default-mutations
-         "num=10,td=5,tr2=5,ts1=5,ts2=5,bd,bf,bi,br,bp,bei,bed,ber")
+         "num=10,td=5,tr2=5,ts1=5,tr=5,ts2=5,bd,bf,bi,br,bp,bei,bed,ber")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
