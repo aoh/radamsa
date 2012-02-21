@@ -1,3 +1,7 @@
+;;;
+;;; Radamsa 
+;;;
+
 (define-library (rad main)
 
    (import
@@ -15,6 +19,7 @@
    (begin
 
       (define version-str "Radamsa 0.3a") ;; aka funny fold
+
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
       (define command-line-rules
@@ -34,7 +39,7 @@
               (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
                   comment "Which data generators to use"
                   default "file,stdin=100")
-              (metadata "-M" "--metadata" has-arg
+              (metadata "-M" "--meta" has-arg
                   comment "Save metadata about generated files to this file")
               (list "-l" "--list" comment "List mutations, patterns and generators")
               (version "-V" "--version" comment "Show version information."))))
@@ -107,6 +112,7 @@
                    (gen 
                      (generator-priorities->generator rs
                         (getf dict 'generators) paths fail (getf dict 'count))))
+                  (record-meta (list 'seed (getf dict 'seed)))
                   (let loop 
                      ((rs rs)
                       (muta (getf dict 'mutations))
@@ -121,7 +127,7 @@
                             (out fd meta (out meta))
                             (rs muta meta n-written 
                               (output (pat rs ll muta meta) fd)))
-                           (record-meta meta)
+                           (record-meta (ff->list meta))
                            (loop rs muta pat out (+ p 1)))))))))
 
       (define (radamsa args)
@@ -132,5 +138,5 @@
 
 (import (rad main))
 
-radamsa
+radamsa ;; (arg ...) → int
 
