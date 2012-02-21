@@ -314,7 +314,7 @@
       (define (edit-sublist lst sub op)
          (if (pair? lst)
             (if (eq? (car lst) sub)
-               (cons (op lst) (cdr lst))
+               (op lst)
                (cons (edit-sublist (car lst) sub op)
                      (edit-sublist (cdr lst) sub op)))
             lst))
@@ -377,12 +377,14 @@
       (define (sed-tree-swap-one rs ll meta)
          (lets
             ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
-             (subs (sublists lst)))
-            (if (length< subs 3)
+             (subs (sublists lst))
+             (n (length subs)))
+            (if (length< subs 2)
                ;; drop priority, nothing cool here
                (values sed-tree-swap-one rs ll meta -1)
                (lets
                   ((rs toswap (reservoir-sample rs subs 2))
+                   (rs toswap (random-permutation rs toswap)) ;; not random for l=2
                    (a (car toswap))
                    (b (cadr toswap))
                    (rs delta (rand rs 2))
@@ -397,7 +399,7 @@
          (lets
             ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
              (subs (sublists lst)))
-            (if (length< subs 3)
+            (if (length< subs 2)
                ;; drop priority, nothing cool here
                (values sed-tree-swap-two rs ll meta -1)
                (lets
@@ -407,7 +409,7 @@
                    (rs delta (rand rs 2))
                    (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
                    (lst (edit-sublists lst mapping)))
-                  (values sed-tree-swap-one rs
+                  (values sed-tree-swap-two rs
                      (flush-bvecs (flatten lst null) (cdr ll))
                      (inc meta 'tree-swap-two)
                      delta)))))
