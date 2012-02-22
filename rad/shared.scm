@@ -23,7 +23,7 @@
 
       (define avg-block-size 4096)        ; average block size when streaming sample data
       (define initial-ip 24)              ; initial max 1/n for basic patterns
-      (define remutate-probability 2/3)   ; probability of each mutation being followed by a new one in nd
+      (define remutate-probability 4/5)   ; probability of each mutation being followed by a new one in nd
       
       (define max-block-size (* 2 avg-block-size))
 
