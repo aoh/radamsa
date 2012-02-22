@@ -368,57 +368,22 @@
                      (loop lst null (cons (reverse (cons 10 buff)) out))
                      (loop lst (cons hd buff) out))))))
 
-      ;; delete a random line
-      (define (sed-line-del rs ll meta)
-         (lets
-            ((ls (lines (car ll))) ;; intentionally ignores (possibly-partial line ... possibly-partial)
-             (len (length ls))
-             (rs a (rand rs len)))
-            (if (null? ls)
-               (values sed-line-del rs ll meta 0)
-               (values sed-line-del rs 
-                  (cons (list->byte-vector (foldr append null (ldel ls a))) (cdr ll))
-                  (inc meta 'line-del) 0))))
+      (define (unlines ls) 
+         (foldr append null ls))
 
-;      (define (sed-ldup rs)
-;         (λ (ll)
-;            (lets
-;               ((ls (lines (car ll)))
-;                (len (length ls)))
-;               (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
-;                  (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones
-;                     (cons (list->byte-vector (foldr append null (ledn ls a (# (x) (cons (car x) x))))) (cdr ll)))
-;                  ll)))) ;; do nothing if we don't get full lines in this block
-;
-;      ;; instert a random line to a random position
-;      (define (sed-lins rs)
-;         (λ (ll)
-;            (lets
-;               ((ls (lines (car ll)))
-;                (len (length ls)))
-;               (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
-;                  (lets
-;                     ((rs from (rand-range rs 1 (- len 1)))
-;                      (rs to (rand-range rs 1 (- len 1)))) ;; fixme: growth -> may become too large
-;                     (cons (list->byte-vector (foldr append null (lins ls to (lref ls from)))) (cdr ll)))
-;                  ll))))
-;
-;      ;; swap two consecutive lines
-;      '(define (sed-lswapc rs)
-;         (λ (ll)
-;            (lets
-;               ((ls (lines (car ll)))
-;                (len (length ls)))
-;               (if (> len 3) ;; we want at least [possibly-partial a b possibly-partial]
-;                  (lets
-;                     ((rs pos (rand-range rs 1 (- len 2))))
-;                     (cons
-;                        (list->byte-vector
-;                           (foldr append null
-;                              (ledn ls pos (λ (x) (ilist (cadr x) (car x) (cddr x))))))
-;                        (cdr ll)))
-;                  ll))))
+      (define (line-op op name)
+         (define (self rs ll meta)
+            (lets ((rs ls (op rs (lines (car ll)))))
+               (values self rs 
+                  (flush-bvecs (unlines ls) (cdr ll))
+                  (inc meta name) 0)))
+         self)
 
+      (define sed-line-del (line-op list-del 'line-del))
+      (define sed-line-dup (line-op list-dup 'line-dup))
+      (define sed-line-clone (line-op list-clone 'line-clone))
+      (define sed-line-repeat (line-op list-repeat 'line-repeat))
+      (define sed-line-swap (line-op list-swap 'line-swap))
 
 
       ;;;
@@ -695,7 +660,7 @@
       ; [i]nsert
       ; [r]epeat
       ; [d]rop
-      ; [s]wap/[s]tutter
+      ; [s]wap/[s]tutter/[s]urf <- replace with [j]ump?
 
       (define *mutations*
          (list
@@ -720,6 +685,10 @@
             ;; line
             
             (tuple "ld" sed-line-del "delete a line")
+            (tuple "lr2" sed-line-dup "duplicate a line")
+            (tuple "li" sed-line-clone "clone and insert it nearby")
+            (tuple "lr" sed-line-repeat "repeat a line")
+            (tuple "ls" sed-line-swap "swap two lines")
 
             ;; tree
 
@@ -740,7 +709,7 @@
             ))
 
       (define default-mutations
-         "ss=8,num=6,td=3,tr2=3,ts1=3,tr=3,ts2=3,ld=2,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "ss=8,num=6,td=3,tr2=3,ts1=3,tr=3,ts2=3,ld=2,lr2=2,li=2,ls=2,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
