@@ -63,6 +63,28 @@
                ;; not doing now because online case is 99.9% of stdin uses
                (values rs ll (put #false 'generator 'stdin)))))
 
+      (define (random-block rs n out)
+         (if (eq? n 0)
+            (values rs (list->byte-vector out))
+            (lets ((digit rs (uncons rs #f)))
+               (random-block rs (- n 1) (cons (fxband digit 255) out)))))
+
+      (define (random-stream rs)
+         (lets 
+            ((rs n (rand-range rs 32 max-block-size))
+             (rs b (random-block rs n null))
+             (rs ip (rand-range rs 1 100))
+             (rs o (rand rs ip)))
+            (if (eq? o 0) ;; end
+               (list b)
+               (pair b (random-stream rs)))))
+      
+      (define (random-generator rs)
+         (lets ((rs seed (rand rs 1111111111111111111111111111111111111)))
+            (values rs 
+               (random-stream (seed->rands seed))
+               (put #false 'generator 'random))))
+
       (define (file-streamer paths)
          (lets
             ((paths (list->vector paths))
@@ -117,6 +139,8 @@
                            (if (null? args)
                               #false ; no samples given, don't start this one
                               (cons priority (file-streamer args)))))
+                     ((equal? name "random")
+                        (cons priority random-generator))
                      (else
                         (fail (list "Unknown data generator: " name)))))
                (fail "Bad generator priority"))))

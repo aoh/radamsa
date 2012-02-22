@@ -69,7 +69,8 @@
          (print "")
          (print "Generators (-g)")
          (print " stdin: read data from standard input if no paths are given or - is among them")
-         (print " file: read data from given files"))
+         (print " file: read data from given files")
+         (print " random: generate random data"))
 
       (define (maybe-meta-logger path fail)
          (if path
