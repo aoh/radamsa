@@ -376,6 +376,35 @@
                   (values sed-seq-repeat rs ll (inc meta 'seq-repeat) 0)))))
 
 
+      ;;;
+      ;;; UTF-8
+      ;;;
+
+      (define (sed-utf8-widen rs ll meta)
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (ll
+               (cons
+                  (edit-byte-vector (car ll) p
+                     (λ (old tl)
+                        ;; assuming we hit a 6-bit ascii char, make it unnecessarily wide
+                        ;; which might confuse a length calculation
+                        (if (eq? old (band old #b111111))
+                           (ilist #b11000000 (bor old #b10000000) tl)
+                           ;; fixme: find the next valid point (if any) and do this properly
+                           (cons old tl))))
+                  (cdr ll))))
+            (values sed-utf8-widen rs ll (inc meta 'utf8-widen) 0)))
+
+      ;; insert UTF-8 that might be mishandled
+      (define (sed-utf8-insert rs ll meta)
+         (lets
+            ((rs p (rand rs (sizeb (car ll)))) 
+             (rs bytes (rand-elem rs funny-unicode)))
+            (values sed-utf8-insert rs 
+               (cons (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl)))) (cdr ll))
+               (inc meta 'utf8-insert) 0)))
+
 
       ;;;
       ;;; Guessed Parse-tree Mutations
@@ -626,13 +655,16 @@
 
             ;; utf-8
 
+            (tuple "uw" sed-utf8-widen  "try to make a code point too wide")
+            (tuple "ui" sed-utf8-insert "insert funny unicode")
+
             ;; special
             (tuple "num" sed-num "modify a textual number")
 
             ))
 
       (define default-mutations
-         "num=8,ss=8,td=5,tr2=5,ts1=5,tr=5,ts2=5,sr,bd,bf,bi,br,bp,bei,bed,ber")
+         "num=8,ss=8,td=5,tr2=5,ts1=5,tr=5,ts2=5,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
