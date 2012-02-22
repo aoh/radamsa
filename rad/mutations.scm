@@ -6,6 +6,7 @@
 
    (import 
       (owl base)
+      (rad generic)
       (rad shared))
 
    (export 
@@ -50,34 +51,6 @@
                            (lets ((pos _ (fx- pos 1)))
                               (loop pos (cons val out))))))))))
 
-      (define funny-unicode
-         (list->tuple
-            (append
-               (list ;; some manual ones
-                  (list 239 191 191)     ;; 65535
-                  (list 240 144 128 128) ;; 65536
-                  (list #xef #xbb #xbf)  ;; the canonical utf8 bom
-                  (list #xfe #xff)       ;; utf16 be bom
-                  (list #xff #xfe)       ;; utf16 le bom
-                  (list 0 0 #xff #xff)   ;; ascii null be
-                  (list #xff #xff 0 0)   ;; ascii null le
-                  (list 43 47 118 56)    ;; and some others from wikipedia
-                  (list 43 47 118 57) (list 43 47 118 43) (list 43 47 118 47)
-                  (list 247 100 76) (list 221 115 102 115) (list 14 254 255) (list 251 238 40)
-                  (list 251 238 40 255) (list 132 49 149 51))
-               (map ;; some valid points and ranges
-                  (λ (codepoint)
-                     (render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
-                  (fold
-                  (λ (tl node)
-                        (if (pair? node) ;; inclusive range
-                           (append (iota (car node) 1 (+ (cdr node) 1)) tl)
-                           (cons node tl)))
-                     null
-                     '((#x0009 . #x000d) #x00a0 #x1680 #x180e (#x2000 . #x200a) #x2028 #x2029 #x202f #x205f
-                       #x3000 (#x200e . #x200f) (#x202a . #x202e) (#x200c . #x200d) #x0345 #x00b7 (#x02d0 . #x02d1)
-                       #xff70 (#x02b0 . #x02b8) #xfdd0 #x034f (#x115f . #x1160) (#x2065 . #x2069) #x3164 #xffa0
-                       #xe0001 (#xe0020 . #xe007f) (#x0e40 . #x0e44) #x1f4a9))))))
 
 
       ;;;
@@ -247,6 +220,9 @@
                   (cdr ll))
                (inc meta 'byte-perm) 0)))
 
+
+
+
       ;;;
       ;;; Byte Sequences
       ;;;
@@ -377,8 +353,106 @@
 
 
       ;;;
+      ;;; Lines
+      ;;;
+
+      ;; bvec → ((... 10) .. (... [10])), cut after newlines
+      (define (lines bvec)
+         (let loop ((lst (vector->list bvec)) (buff null) (out null))
+            (if (null? lst)
+               (if (null? buff)
+                  (reverse out)
+                  (reverse (cons (reverse buff) out)))
+               (lets ((hd lst lst))
+                  (if (eq? hd 10) ;; newline
+                     (loop lst null (cons (reverse (cons 10 buff)) out))
+                     (loop lst (cons hd buff) out))))))
+
+      ;; delete a random line
+      (define (sed-line-del rs ll meta)
+         (lets
+            ((ls (lines (car ll))) ;; intentionally ignores (possibly-partial line ... possibly-partial)
+             (len (length ls))
+             (rs a (rand rs len)))
+            (if (null? ls)
+               (values sed-line-del rs ll meta 0)
+               (values sed-line-del rs 
+                  (cons (list->byte-vector (foldr append null (ldel ls a))) (cdr ll))
+                  (inc meta 'line-del) 0))))
+
+;      (define (sed-ldup rs)
+;         (λ (ll)
+;            (lets
+;               ((ls (lines (car ll)))
+;                (len (length ls)))
+;               (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+;                  (lets ((rs a (rand-range rs 1 (- len 1)))) ;; one of the middle ones
+;                     (cons (list->byte-vector (foldr append null (ledn ls a (# (x) (cons (car x) x))))) (cdr ll)))
+;                  ll)))) ;; do nothing if we don't get full lines in this block
+;
+;      ;; instert a random line to a random position
+;      (define (sed-lins rs)
+;         (λ (ll)
+;            (lets
+;               ((ls (lines (car ll)))
+;                (len (length ls)))
+;               (if (> len 2) ;; we want at least [possibly-partial a b possibly-partial]
+;                  (lets
+;                     ((rs from (rand-range rs 1 (- len 1)))
+;                      (rs to (rand-range rs 1 (- len 1)))) ;; fixme: growth -> may become too large
+;                     (cons (list->byte-vector (foldr append null (lins ls to (lref ls from)))) (cdr ll)))
+;                  ll))))
+;
+;      ;; swap two consecutive lines
+;      '(define (sed-lswapc rs)
+;         (λ (ll)
+;            (lets
+;               ((ls (lines (car ll)))
+;                (len (length ls)))
+;               (if (> len 3) ;; we want at least [possibly-partial a b possibly-partial]
+;                  (lets
+;                     ((rs pos (rand-range rs 1 (- len 2))))
+;                     (cons
+;                        (list->byte-vector
+;                           (foldr append null
+;                              (ledn ls pos (λ (x) (ilist (cadr x) (car x) (cddr x))))))
+;                        (cdr ll)))
+;                  ll))))
+
+
+
+      ;;;
       ;;; UTF-8
       ;;;
+
+      (define funny-unicode
+         (list->tuple
+            (append
+               (list ;; some manual ones
+                  (list 239 191 191)     ;; 65535
+                  (list 240 144 128 128) ;; 65536
+                  (list #xef #xbb #xbf)  ;; the canonical utf8 bom
+                  (list #xfe #xff)       ;; utf16 be bom
+                  (list #xff #xfe)       ;; utf16 le bom
+                  (list 0 0 #xff #xff)   ;; ascii null be
+                  (list #xff #xff 0 0)   ;; ascii null le
+                  (list 43 47 118 56)    ;; and some others from wikipedia
+                  (list 43 47 118 57) (list 43 47 118 43) (list 43 47 118 47)
+                  (list 247 100 76) (list 221 115 102 115) (list 14 254 255) (list 251 238 40)
+                  (list 251 238 40 255) (list 132 49 149 51))
+               (map ;; some valid points and ranges
+                  (λ (codepoint)
+                     (render (list->string (list codepoint)) null)) ;; <- make UTF-8 repr
+                  (fold
+                     (λ (tl node)
+                           (if (pair? node) ;; inclusive range
+                              (append (iota (car node) 1 (+ (cdr node) 1)) tl)
+                              (cons node tl)))
+                     null
+                     '((#x0009 . #x000d) #x00a0 #x1680 #x180e (#x2000 . #x200a) #x2028 #x2029 #x202f #x205f
+                       #x3000 (#x200e . #x200f) (#x202a . #x202e) (#x200c . #x200d) #x0345 #x00b7 (#x02d0 . #x02d1)
+                       #xff70 (#x02b0 . #x02b8) #xfdd0 #x034f (#x115f . #x1160) (#x2065 . #x2069) #x3164 #xffa0
+                       #xe0001 (#xe0020 . #xe007f) (#x0e40 . #x0e44) #x1f4a9))))))
 
       (define (sed-utf8-widen rs ll meta)
          (lets 
@@ -644,6 +718,8 @@
             ;; token
 
             ;; line
+            
+            (tuple "ld" sed-line-del "delete a line")
 
             ;; tree
 
@@ -664,7 +740,7 @@
             ))
 
       (define default-mutations
-         "num=8,ss=8,td=5,tr2=5,ts1=5,tr=5,ts2=5,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "num=8,ss=8,td=5,tr2=5,ts1=5,tr=5,ts2=5,ld=3,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
