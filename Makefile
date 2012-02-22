@@ -32,6 +32,9 @@ clean:
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
 
+test:
+	tests/run ol --run rad/main.scm
+
 get-owl:
 	# need to install owl to be able to compile radamsa
 	# this may take a moment depending on your machine
