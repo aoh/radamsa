@@ -251,6 +251,8 @@
       ;;; Byte Sequences
       ;;;
 
+      ;; suffix surf
+
       (define (match-prefix lst p)
          (cond
             ((null? p) #true)
@@ -348,6 +350,31 @@
                      (inc meta 'seq-surf)
                      1))
                (values sed-seq-surf rs ll meta -1))))
+
+      ;; stutter 
+
+      (define (sed-seq-repeat rs ll meta)
+         (lets ((n (sizeb (car ll))))
+            (if (< n 2)
+               (values sed-seq-repeat rs ll meta 0)
+               (lets
+                  ((rs start (rand-range rs 0 (- n 1)))
+                   (rs end (rand-range rs (+ start 1) n))
+                   (pre (map (λ (p) (refb (car ll) p)) (iota 0 1 start)))
+                   (post (map (λ (p) (refb (car ll) p)) (iota end 1 (sizeb (car ll)))))
+                   (stut (list->byte-vector (map (λ (p) (refb (car ll) p)) (iota start 1 end))))
+                   (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
+                   (n (max 2 n))
+                   (stuts
+                     (fold
+                        (λ (tl n) (cons stut tl))
+                        (if (null? post)
+                           (cdr ll)
+                           (cons (list->byte-vector post) (cdr ll)))
+                        (iota 0 1 n)))
+                   (ll (if (null? pre) stuts (cons (list->byte-vector pre) stuts))))
+                  (values sed-seq-repeat rs ll (inc meta 'seq-repeat) 0)))))
+
 
 
       ;;;
@@ -583,6 +610,7 @@
             ;; [s]equence of bytes
 
             (tuple "ss" sed-seq-surf "jump to a similar position in block")
+            (tuple "sr" sed-seq-repeat "repeat a sequence of bytes")
 
             ;; token
 
@@ -604,7 +632,7 @@
             ))
 
       (define default-mutations
-         "num=10,td=5,tr2=5,ts1=5,tr=5,ts2=5,bd,bf,bi,br,bp,bei,bed,ber")
+         "num=8,ss=8,td=5,tr2=5,ts1=5,tr=5,ts2=5,sr,bd,bf,bi,br,bp,bei,bed,ber")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
