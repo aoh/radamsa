@@ -18,7 +18,7 @@
 
    (begin
 
-      (define version-str "Radamsa 0.3b") ;; aka funny fold
+      (define version-str "Radamsa 0.3c") ;; aka funny fold
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
