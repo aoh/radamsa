@@ -9,9 +9,12 @@
 
    (export
       list-del      ;; rs l → rs' l'
-      list-dup      ;; rs l → rs' l'
-      list-clone    ;; rs l → rs' l'
-      list-repeat   ;; rs l → rs' l'
+      list-dup      ;; likewise
+      list-clone    ;; ditto 
+      list-repeat   ;; same
+      list-swap     ;; etc
+
+      ;; missing: perm
    )
 
    (begin
@@ -73,6 +76,16 @@
                 (rs from (rand rs len))
                 (rs to (rand rs len)))
                (values rs (lins l to (lref l from))))))
+
+      ;; clone a value to another position
+      (define (list-swap rs l)
+         (let ((len (length l)))
+            (if (< len 2)
+               (values rs l)
+               (lets ((rs p (rand rs (- len 1))))
+                  (values rs
+                     (edit l p 
+                        (λ (l) (ilist (cadr l) (car l) (cddr l)))))))))
 
       ;; clone a value to another position
       (define (list-clone rs l)
