@@ -127,7 +127,9 @@
                       (out (get dict 'output 'bug))
                       (p 1))
                      (if (< n p)
-                        0
+                        (begin
+                           (record-meta 'close)
+                           0)
                         (lets
                            ((rs ll meta (gen rs))
                             (meta (put meta 'nth p))
