@@ -84,6 +84,15 @@
             tail
             (cons (car pos) (copy-range (cdr pos) end tail))))
 
+      (define interesting-numbers 
+         (list->vector 
+            (fold 
+               (λ (o x) 
+                  (let ((x (<< 1 x)))
+                     (ilist (- x 1) x (+ x 1) o)))
+               null
+               '(1 7 8 15 16 31 32 63 64 127 128))))
+
       ;; fixme: simple placeholder
       (define (mutate-num rs num)
          (lets ((rs n (rand rs 16)))
@@ -92,17 +101,12 @@
                ((eq? n 1)  (values rs (- n 1)))
                ((eq? n 2)  (values rs 0)) ;; todo, pack funny nums to a list and reduce opts
                ((eq? n 3)  (values rs 1))
-               ((eq? n 4)  (values rs #xff))
-               ((eq? n 5)  (values rs #x100))
-               ((eq? n 6)  (values rs #xffff))
-               ((eq? n 7)  (values rs #x10000))
-               ((eq? n 8)  (values rs #x7fffffff))
-               ((eq? n 9)  (values rs #x80000000))
-               ((eq? n 10) (values rs #xffffffff)) ;; todo 64-bit also when using a list
-               ((eq? n 11) (values rs #x100000000))
-               ((eq? n 12)
-                  (lets ((rs m (rand rs (* n 2))))
-                     (values rs (- n m))))
+               ((eq? n 4)  (rand-elem rs interesting-numbers))
+               ((eq? n 5)  (rand-elem rs interesting-numbers))
+               ((eq? n 6)  (rand-elem rs interesting-numbers))
+               ((eq? n 7)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (+ num x))))
+               ((eq? n 8)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (- x num))))
+               ((eq? n 9)  (lets ((rs m (rand rs (* n 2)))) (values rs (- n m))))
                (else  
                   (lets
                      ((rs n (rand-range rs 1 129))
