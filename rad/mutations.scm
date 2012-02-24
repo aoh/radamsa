@@ -106,8 +106,10 @@
                (else  
                   (lets
                      ((rs n (rand-range rs 1 129))
-                      (rs n (rand-log rs n)))
-                     (values rs (+ num n)))))))
+                      (rs n (rand-log rs n))
+                      (rs s (rand rs 3))) ;; add more likely 
+                     (values rs
+                        ((if (eq? s 0) - +) num n)))))))
 
       (define (mutate-a-num rs lst nfound)
          (if (null? lst)
@@ -717,46 +719,57 @@
                (print*-to (list "Unknown mutation: " str) stderr)
                #false)))
 
-      ;; #f | (name . priority) → #f | (priority . func)
+      ;; #f | (name . priority) → #f | #(100 priority mutafn name)
       (define (priority->fuzzer node)
          (cond
             ((not node) #false)
             ((name->mutation (car node)) => 
-               (λ (func) (cons (cdr node) func)))
+               (λ (func) (tuple 100 (cdr node) func (car node))))
             (else #false)))
 
-      ; limit to [2 ... 1000]
+      ; limit to [2 ... 100]
       (define (adjust-priority pri delta)
          (if (eq? delta 0)
             pri
-            (max 1 (min 100 (+ pri delta)))))
+            (max 2 (min 100 (+ pri delta)))))
 
       ;; rs pris → rs' pris'
       (define (weighted-permutation rs pris)
+         ;; show a sorted probability distribution 
+         ;(lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
+         ;       (all (fold + 0 (map car probs))))
+         ;      (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
          (lets    
             ((rs ppris ; ((x . (pri . fn)) ...)
                (fold-map
                   (λ (rs node)
-                     (lets ((rs pri (rand rs (car node))))
+                     (lets
+                        ((limit (* (ref node 1) (ref node 2))) ;; score * priority
+                         (rs pri (rand rs limit)))
                         (values rs (cons pri node))))
-                  rs pris)))
+                  rs pris))
+             (ppris (sort car> ppris)))
             (values rs (map cdr (sort car> ppris)))))
 
-      ;; ((priority . mutafn) ...) → (rs ll meta → mutator' rs' ll' meta')
+      ;; Mutators have a score they can change themselves (1-100) and a priority given by 
+      ;; the user at command line. Activation probability is (score*priority)/SUM(total-scores).
+
+      ;; (#(score priority mutafn name) ...) → merged-mutafn :: rs ll meta → merged-mutafn' rs' ll' meta'
       (define (mux-fuzzers fs)
          (λ (rs ll meta)
             (let loop ((ll ll)) ;; <- force up to a data node
                (cond
                   ((pair? ll)
-                     (lets ((rs pfs (weighted-permutation rs fs))) ;; ((priority . mutafn) ...)
+                     (lets ((rs pfs (weighted-permutation rs fs))) ;; (#(score priority mutafn name) ...)
                         (let loop ((pfs pfs) (out null) (rs rs)) ;; try each in order
                            (if (null? pfs) ;; no mutation worked
                               (values (mux-fuzzers out) rs ll meta)
                               (lets
-                                 ((mfn rs mll mmeta delta 
-                                    ((cdar pfs) rs ll meta))
+                                 ((node (car pfs))
+                                  (mscore mpri mfn mname node)
+                                  (mfn rs mll mmeta delta (mfn rs ll meta))
                                   (out ;; always remember whatever was learned
-                                    (cons (cons (adjust-priority (caar pfs) delta) mfn) out)))
+                                    (cons (tuple (adjust-priority mscore delta) mpri mfn mname) out)))
                                  (if (equal? (car ll) (car mll)) 
                                     ;; try something else if no changes, but update state
                                     (loop (cdr pfs) out rs)
@@ -771,10 +784,9 @@
          (lets
             ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
              (ps (map selection->priority ps))
-             (ps (map (λ (x) (if x (cons (car x) (* (cdr x) 10)) x)) ps)) ; scale priorities to 10x
              (fs (map priority->fuzzer ps)))
             (if (all self fs) 
-               (mux-fuzzers (sort car> fs))
+               (mux-fuzzers fs)
                #false)))
 
 ))
