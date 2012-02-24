@@ -16,6 +16,21 @@
 
    (begin
 
+      (define min-score 1)   ;; occurrence-priority = score*priority / total
+      (define max-score 20)
+
+      ;; quick peek if the data looks possibly binary
+      ;; quick stupid version: ignore UTF-8, look for high bits
+      (define (binarish? lst)
+         (let loop ((lst lst) (p 0))
+            (cond
+               ((eq? p 4) #false)
+               ((null? lst) #false)
+               (else
+                  (if (eq? 0 (fxband 128 (car lst)))
+                     #true
+                     (loop (cdr lst) (+ p 1)))))))
+
       ;; val++ in ff, or insert 1
       (define (inc ff key)
          (let ((val (getf ff key)))
@@ -95,7 +110,7 @@
 
       ;; fixme: simple placeholder
       (define (mutate-num rs num)
-         (lets ((rs n (rand rs 16)))
+         (lets ((rs n (rand rs 12)))
             (cond
                ((eq? n 0)  (values rs (+ n 1)))
                ((eq? n 1)  (values rs (- n 1)))
@@ -138,7 +153,16 @@
             ((lst (vec->list (car ll)))
              (rs n lst (mutate-a-num rs lst 0))
              (lst (flush-bvecs lst (cdr ll))))
-            (values sed-num rs lst (inc meta 'muta-num) 0)))
+            (cond
+               ((eq? n 0) 
+                  ;; no numbers, even accidental ones in binary
+                  (values sed-num rs lst meta -1))
+               ((binarish? lst)
+                  ;; found, but this looks a bit binary
+                  (values sed-num rs lst (inc meta 'muta-num) -1))
+               (else
+                  ;; found and looks ok
+                  (values sed-num rs lst (inc meta 'muta-num) +1)))))
 
 
       ;;;
@@ -374,15 +398,28 @@
                      (loop lst null (cons (reverse (cons 10 buff)) out))
                      (loop lst (cons hd buff) out))))))
 
+      ;; note: possible heuristics: binariness and average interval of newlines
+      (define (try-lines bvec)
+         (lets ((ls (lines bvec)))
+            (cond
+               ((null? ls) ;; no data
+                  #false)
+               ((binarish? (car ls)) ;; first line (start of block) looks binary
+                  #false)
+               (else ls))))
+
       (define (unlines ls) 
          (foldr append null ls))
 
       (define (line-op op name)
          (define (self rs ll meta)
-            (lets ((rs ls (op rs (lines (car ll)))))
-               (values self rs 
-                  (flush-bvecs (unlines ls) (cdr ll))
-                  (inc meta name) 0)))
+            (let ((ls (try-lines (car ll))))
+               (if ls
+                  (lets ((rs ls (op rs ls)))
+                     (values self rs 
+                        (flush-bvecs (unlines ls) (cdr ll))
+                        (inc meta name) 1))
+                  (values self rs ll meta -1))))
          self)
 
       (define sed-line-del (line-op list-del 'line-del))
@@ -723,19 +760,19 @@
                (print*-to (list "Unknown mutation: " str) stderr)
                #false)))
 
-      ;; #f | (name . priority) → #f | #(100 priority mutafn name)
+      ;; #f | (name . priority) → #f | #(max-score priority mutafn name)
       (define (priority->fuzzer node)
          (cond
             ((not node) #false)
             ((name->mutation (car node)) => 
-               (λ (func) (tuple 100 (cdr node) func (car node))))
+               (λ (func) (tuple max-score (cdr node) func (car node))))
             (else #false)))
 
       ; limit to [2 ... 100]
       (define (adjust-priority pri delta)
          (if (eq? delta 0)
             pri
-            (max 2 (min 100 (+ pri delta)))))
+            (max min-score (min max-score (+ pri delta)))))
 
       ;; rs pris → rs' pris'
       (define (weighted-permutation rs pris)

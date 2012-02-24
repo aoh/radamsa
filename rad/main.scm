@@ -74,11 +74,11 @@
 
       (define (maybe-meta-logger path fail)
          (if path
-            (let ((port (open-output-file path)))
+            (let ((port (if (equal? path "-") stdout (open-output-file path))))
                (if port
                   (λ (stuff)
                      (if (eq? stuff 'close)
-                        (close-port port)
+                        (if (not (eq? port stdout)) (close-port port))
                         (mail port (serialize stuff '(10)))))
                   (fail "Cannot open metadata log file")))
             (λ (stuff) stuff)))
