@@ -28,8 +28,8 @@
                ((null? lst) #false)
                (else
                   (if (eq? 0 (fxband 128 (car lst)))
-                     #true
-                     (loop (cdr lst) (+ p 1)))))))
+                     (loop (cdr lst) (+ p 1))
+                     #true)))))
 
       ;; val++ in ff, or insert 1
       (define (inc ff key)
