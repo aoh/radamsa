@@ -19,17 +19,24 @@
       (define min-score 1)   ;; occurrence-priority = score*priority / total
       (define max-score 20)
 
+      ;; simple runtime event tracing
+      (define-syntax stderr-probe 
+         (syntax-rules ()
+            ;((stderr-probe thing value) (begin (print-to thing stderr) value)) ;; probes enabled
+            ((stderr-probe thing value) value) ;; probes disabled
+            ))
+
       ;; quick peek if the data looks possibly binary
       ;; quick stupid version: ignore UTF-8, look for high bits
       (define (binarish? lst)
          (let loop ((lst lst) (p 0))
             (cond
-               ((eq? p 4) #false)
-               ((null? lst) #false)
+               ((eq? p 4) (stderr-probe "BINARY: NO" #false))
+               ((null? lst) (stderr-probe "BINARY: NO" #false))
                (else
                   (if (eq? 0 (fxband 128 (car lst)))
                      (loop (cdr lst) (+ p 1))
-                     #true)))))
+                     (stderr-probe "BINARY: YES" #true))))))
 
       ;; val++ in ff, or insert 1
       (define (inc ff key)
@@ -398,7 +405,7 @@
                      (loop lst null (cons (reverse (cons 10 buff)) out))
                      (loop lst (cons hd buff) out))))))
 
-      ;; note: possible heuristics: binariness and average interval of newlines
+      ;; #u8[byte ...] → ((byte ... 10) ...) | #false, if this doesn't look like line-based text data
       (define (try-lines bvec)
          (lets ((ls (lines bvec)))
             (cond
@@ -575,19 +582,21 @@
                      (edit-sublists (cdr lst) opff))))
             lst))
 
-      (define (partial-parse lst)
-         (let loop ((lst lst) (rout null))
-            (if (null? lst)
-               (reverse rout)
-               (lets ((closep (get usual-delims (car lst) #false)))
-                  (if closep
-                     (lets
-                        ((hd (car lst))
-                         (this lst (grow (cdr lst) closep null)))
-                        (if lst
-                           (loop lst (cons (cons hd this) rout))
-                           (append (reverse rout) (cons hd this))))
-                     (loop (cdr lst) (cons (car lst) rout)))))))
+      (define (partial-parse lst abort)
+         (if (binarish? lst)
+            (abort)
+            (let loop ((lst lst) (rout null))
+               (if (null? lst)
+                  (reverse rout)
+                  (lets ((closep (get usual-delims (car lst) #false)))
+                     (if closep
+                        (lets
+                           ((hd (car lst))
+                            (this lst (grow (cdr lst) closep null)))
+                           (if lst
+                              (loop lst (cons (cons hd this) rout))
+                              (append (reverse rout) (cons hd this))))
+                        (loop (cdr lst) (cons (car lst) rout))))))))
 
       (define (flatten node tl)
          (cond
@@ -595,29 +604,26 @@
             ((pair? node) (flatten (car node) (flatten (cdr node) tl)))
             (else (cons node tl))))
 
-     (define (sed-byte-inc rs ll meta) ;; increment a byte value mod 256
-         (lets ((rs p (rand rs (sizeb (car ll)))))
-            (values sed-byte-inc rs
-               (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll))
-               (inc meta 'byte-inc) 0)))
 
       (define (sed-tree-op op name)
          (define (self rs ll meta)
             (let ((meta (inc meta name)))
-               (lets
-                  ((lst (partial-parse (vector->list (car ll))))
+               (lets/cc5 ret
+                  ((abort (λ () (ret self rs ll meta -1)))
+                   (lst (partial-parse (vector->list (car ll)) abort))
                    ;(_ (if (not (equal? (vector->list (car ll)) (flatten lst null))) (error "partial parse bug: " (list (car ll) 'parses 'to lst))))
                    (rs sub (pick-sublist rs lst)) ;; choose partially parsed node to mutate ;; fixme: not checked for F
                    (lst (edit-sublist lst sub op)))
                   (values self rs
                      (flush-bvecs (flatten lst null) (cdr ll))
-                     meta 0))))
+                     meta +1))))
          self)
 
       ;; overwrite one node with one of the others
       (define (sed-tree-swap-one rs ll meta)
-         (lets
-            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+         (lets/cc5 ret
+            ((abort (λ () (ret self rs ll meta -1)))
+             (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst))
              (n (length subs)))
             (if (length< subs 2)
@@ -628,17 +634,17 @@
                    (rs toswap (random-permutation rs toswap)) ;; not random for l=2
                    (a (car toswap))
                    (b (cadr toswap))
-                   (rs delta (rand rs 2))
                    (lst (edit-sublist lst a (λ (node) (cons b (cdr node))))))
                   (values sed-tree-swap-one rs
                      (flush-bvecs (flatten lst null) (cdr ll))
                      (inc meta 'tree-swap-one)
-                     delta)))))
+                     +1)))))
 
       ;; pairwise swap of two nodes
       (define (sed-tree-swap-two rs ll meta)
-         (lets
-            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+         (lets/cc5 ret
+            ((abort (λ () (ret self rs ll meta -1)))
+             (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst)))
             (if (length< subs 2)
                ;; drop priority, nothing cool here
@@ -647,13 +653,12 @@
                   ((rs toswap (reservoir-sample rs subs 2))
                    (a (car toswap))
                    (b (cadr toswap))
-                   (rs delta (rand rs 2))
                    (mapping (list->ff (list (cons a (λ (x) b)) (cons b (λ (x) a)))))
                    (lst (edit-sublists lst mapping)))
                   (values sed-tree-swap-two rs
                      (flush-bvecs (flatten lst null) (cdr ll))
                      (inc meta 'tree-swap-two)
-                     delta)))))
+                     +1)))))
 
       (define sed-tree-del (sed-tree-op (λ (node) null) 'tree-del))
 
@@ -683,8 +688,9 @@
                   (choose-stutr-nodes rs (cdr subs))))))
 
       (define (sed-tree-stutter rs ll meta)
-         (lets
-            ((lst (partial-parse (vector->list (car ll)))) ;; (byte|node ...)
+         (lets/cc5 ret
+            ((abort (λ () (ret self rs ll meta -1)))
+             (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst))
              (rs subs (random-permutation rs subs))
              (rs parent child (choose-stutr-nodes rs subs))
@@ -697,7 +703,7 @@
                   (values sed-tree-stutter rs 
                      (flush-bvecs (flatten lst null) (cdr ll))
                      (inc meta 'tree-stutter)
-                     0))
+                     +1))
                (values sed-tree-stutter rs ll meta -1))))
 
       ; [i]nsert
@@ -777,20 +783,21 @@
       ;; rs pris → rs' pris'
       (define (weighted-permutation rs pris)
          ;; show a sorted probability distribution 
-         ;(lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
-         ;       (all (fold + 0 (map car probs))))
-         ;      (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
-         (lets    
-            ((rs ppris ; ((x . (pri . fn)) ...)
-               (fold-map
-                  (λ (rs node)
-                     (lets
-                        ((limit (* (ref node 1) (ref node 2))) ;; score * priority
-                         (rs pri (rand rs limit)))
-                        (values rs (cons pri node))))
-                  rs pris))
-             (ppris (sort car> ppris)))
-            (values rs (map cdr (sort car> ppris)))))
+         (stderr-probe
+             (lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
+                    (all (fold + 0 (map car probs))))
+                   (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
+            (lets    
+               ((rs ppris ; ((x . (pri . fn)) ...)
+                  (fold-map
+                     (λ (rs node)
+                        (lets
+                           ((limit (* (ref node 1) (ref node 2))) ;; score * priority
+                            (rs pri (rand rs limit)))
+                           (values rs (cons pri node))))
+                     rs pris))
+                (ppris (sort car> ppris)))
+               (values rs (map cdr (sort car> ppris))))))
 
       ;; Mutators have a score they can change themselves (1-100) and a priority given by 
       ;; the user at command line. Activation probability is (score*priority)/SUM(total-scores).
