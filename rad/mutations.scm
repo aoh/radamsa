@@ -434,6 +434,7 @@
       (define sed-line-clone (line-op list-clone 'line-clone))
       (define sed-line-repeat (line-op list-repeat 'line-repeat))
       (define sed-line-swap (line-op list-swap 'line-swap))
+      (define sed-line-perm (line-op list-perm 'line-perm))
 
 
       ;;;
@@ -738,6 +739,7 @@
             (tuple "li" sed-line-clone "clone and insert it nearby")
             (tuple "lr" sed-line-repeat "repeat a line")
             (tuple "ls" sed-line-swap "swap two lines")
+            (tuple "lp" sed-line-perm "swap order of lines")
 
             ;; tree
 
@@ -758,7 +760,7 @@
             ))
 
       (define default-mutations
-         "ss=8,num=6,td=3,tr2=3,ts1=3,tr=3,ts2=3,ld=2,lr2=2,li=2,ls=2,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "ss=8,num=6,td=3,tr2=3,ts1=3,tr=3,ts2=3,ld=2,lr2=2,li=2,ls=2,lp=2,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)

@@ -13,8 +13,7 @@
       list-clone    ;; ditto 
       list-repeat   ;; same
       list-swap     ;; etc
-
-      ;; missing: perm
+      list-perm     ;
    )
 
    (begin
@@ -77,7 +76,7 @@
                 (rs to (rand rs len)))
                (values rs (lins l to (lref l from))))))
 
-      ;; clone a value to another position
+      ;; swap two adjecent values 
       (define (list-swap rs l)
          (let ((len (length l)))
             (if (< len 2)
@@ -86,6 +85,22 @@
                   (values rs
                      (edit l p 
                         (λ (l) (ilist (cadr l) (car l) (cddr l)))))))))
+
+      ;; permute values
+      (define (list-perm rs l)
+         (lets ((len (length l)))
+            (if (< len 3)
+               (values rs l)
+               (lets 
+                  ((rs from (rand rs (- len 3)))
+                   (rs a (rand-range rs 2 (- len from)))
+                   (rs b (rand-log rs 10))
+                   (n (max 2 (min a b)))
+                   (hs (take l from))
+                   (tl (drop l from))
+                   (rs perm (random-permutation rs (take tl n)))
+                   (tl (append perm (drop tl n))))
+                  (values rs (append hs tl))))))
 
       ;; clone a value to another position
       (define (list-clone rs l)
@@ -103,10 +118,11 @@
 
       '(lets 
          ((rs (seed->rands (expt (time-ms) 3)))
-          (data '(a b c)))
+          (data '(0 1 2 3 4 5 6 7 8 9 a b c d e f)))
          (show rs list-repeat data)
          (show rs list-del data)
          (show rs list-dup data)
-         (show rs list-clone data))
+         (show rs list-clone data)
+         (show rs list-perm data))
 ))
 
