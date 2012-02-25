@@ -32,9 +32,6 @@ clean:
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
 
-test:
-	tests/run ol --run rad/main.scm
-
 get-owl:
 	# need to install owl to be able to compile radamsa
 	# this may take a moment depending on your machine
@@ -48,7 +45,13 @@ standalone:
 	make radamsa.c
    # compile without seccomp and use of syscall
 	diet gcc -DNO_SECCOMP -O3 -Wall -o bin/radamsa radamsa.c
-	
+
+# a quick to compile vanilla bytecode executable
+bytecode:
+	ol -O0 -x c -o - rad/main.scm | gcc -O2 -x c -o bin/radamsa -
+	-mkdir -p tmp
+	sh tests/run bin/radamsa
+
 deps:
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
 	which ol || make get-owl
