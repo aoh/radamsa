@@ -16,8 +16,28 @@
 
    (begin
 
-      (define min-score 1)   ;; occurrence-priority = score*priority / total
+      (define min-score 2)   ;; occurrence-priority = score*priority / total
       (define max-score 20)
+
+      (define p-weakly-usually 51/100)
+
+      ;;;
+      ;;; Random delta generators for random priority steppers
+      ;;;
+
+      ;; random delta for brownian steppers
+      (define (rand-delta rs)
+         (lets ((digit rs (uncons rs #f)))
+            (if (eq? 0 (fxband digit 1))
+               (values rs +1)
+               (values rs -1))))
+
+      ;; random delta with a slight positive bias
+      (define (rand-delta-up rs)
+         (lets ((rs occ (rand-occurs? rs p-weakly-usually)))
+            (if occ
+               (values rs +1)
+               (values rs -1))))
 
       ;; simple runtime event tracing
       (define-syntax stderr-probe 
@@ -31,8 +51,9 @@
       (define (binarish? lst)
          (let loop ((lst lst) (p 0))
             (cond
-               ((eq? p 4) (stderr-probe "BINARY: NO" #false))
+               ((eq? p 8) (stderr-probe "BINARY: NO" #false))
                ((null? lst) (stderr-probe "BINARY: NO" #false))
+               ((eq? (car lst) 0) (stderr-probe "BINARY: YES" #true))
                (else
                   (if (eq? 0 (fxband 128 (car lst)))
                      (loop (cdr lst) (+ p 1))
@@ -159,57 +180,68 @@
          (lets
             ((lst (vec->list (car ll)))
              (rs n lst (mutate-a-num rs lst 0))
+             (bin? (binarish? lst))
              (lst (flush-bvecs lst (cdr ll))))
             (cond
                ((eq? n 0) 
                   ;; no numbers, even accidental ones in binary
                   (values sed-num rs lst meta -1))
-               ((binarish? lst)
+               (bin?
                   ;; found, but this looks a bit binary
                   (values sed-num rs lst (inc meta 'muta-num) -1))
                (else
                   ;; found and looks ok
-                  (values sed-num rs lst (inc meta 'muta-num) +1)))))
+                  (values sed-num rs lst (inc meta 'muta-num) +2)))))
 
 
       ;;;
       ;;; Byte-level Mutations
       ;;;
 
+      ;; todo: swap to generals
+
       (define (sed-byte-drop rs ll meta) ;; drop byte
-         (lets ((rs p (rand rs (sizeb (car ll)))))
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs)))
             (values sed-byte-drop rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) tl)) (cdr ll))
-               (inc meta 'byte-drop) 0)))
+               (inc meta 'byte-drop) d)))
       
       (define (sed-byte-inc rs ll meta) ;; increment a byte value mod 256
-         (lets ((rs p (rand rs (sizeb (car ll)))))
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs)))
             (values sed-byte-inc rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (band 255 (+ old 1)) tl))) (cdr ll))
-               (inc meta 'byte-inc) 0)))
+               (inc meta 'byte-inc) d)))
       
       (define (sed-byte-dec rs ll meta) ;; increment a byte value mod 256
-         (lets ((rs p (rand rs (sizeb (car ll)))))
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs)))
             (values sed-byte-dec rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (if (= old 0) 255 (- old 1)) tl))) (cdr ll))
-               (inc meta 'byte-dec) 0)))
+               (inc meta 'byte-dec) d)))
 
       (define (sed-byte-flip rs ll meta) ;; flip a bit in a byte
          (lets 
             ((rs p (rand rs (sizeb (car ll))))
              (rs pos (rand rs 8))
+             (rs d (rand-delta rs))
              (b (<< 1 pos)))
             (values sed-byte-flip rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (cons (bxor b old) tl))) (cdr ll))
-               (inc meta 'byte-inc) 0)))
+               (inc meta 'byte-inc) d)))
 
       (define (sed-byte-insert rs ll meta) ;; insert a byte
          (lets 
             ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs))
              (rs b (rand rs 256)))
             (values sed-byte-insert rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (ilist b old tl))) (cdr ll))
-               (inc meta 'byte-insert) 0)))
+               (inc meta 'byte-insert) d)))
     
       ;; rs → rs' n
       (define (repeat-len rs)
@@ -228,21 +260,25 @@
       (define (sed-byte-repeat rs ll meta) ;; insert a byte
          (lets 
             ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs))
              (rs n (repeat-len rs)))
             (values sed-byte-repeat rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (push n old (cons old tl)))) (cdr ll))
-               (inc meta 'byte-repeat) 0)))
+               (inc meta 'byte-repeat) d)))
       
       (define (sed-byte-random rs ll meta) ;; swap a byte
          (lets 
             ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs))
              (rs b (rand rs 256)))
             (values sed-byte-random rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (cons b tl))) (cdr ll))
-               (inc meta 'byte-random) 0)))
+               (inc meta 'byte-random) d)))
       
       (define (sed-byte-perm rs ll meta) ;; permute a few bytes
-         (lets ((rs p (rand rs (sizeb (car ll)))))
+         (lets 
+            ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs)))
             (values sed-byte-perm rs 
                (cons 
                   (edit-byte-vector (car ll) p 
@@ -255,7 +291,7 @@
                             (rs head (random-permutation rs head)))
                            (append head tail))))
                   (cdr ll))
-               (inc meta 'byte-perm) 0)))
+               (inc meta 'byte-perm) d)))
 
 
 
@@ -351,17 +387,18 @@
              (poss (occurrences lst root)))
             ;; a jump list of one element is constructed for blocks with just one byte
             ;(show "SURF: jumping " (list 'from from 'to to 'using root))
-            (if (> (length poss) 1)
+            (if (> (length poss) 1) ;; extremely likely for non-random data
                (lets
                   ((from to (choose-jump rs poss (length root)))
                    (block (car ll))
                    (get (λ (p) (refb block p)))
+                   (rs d (rand-delta-up rs))
                    (pre (list->byte-vector (map get (iota 0 1 from))))
                    (post (list->byte-vector (map get (iota to 1 (sizeb block))))))
                   (values sed-seq-surf rs 
                      (ilist pre post (cdr ll))
                      (inc meta 'seq-surf)
-                     1))
+                     d))
                (values sed-seq-surf rs ll meta -1))))
 
       ;; stutter 
@@ -378,6 +415,7 @@
                    (stut (list->byte-vector (map (λ (p) (refb (car ll) p)) (iota start 1 end))))
                    (rs n (rand-log rs 10)) ; max 2^10 = 1024 stuts
                    (n (max 2 n))
+                   (rs delta (rand-delta rs))
                    (stuts
                      (fold
                         (λ (tl n) (cons stut tl))
@@ -386,7 +424,7 @@
                            (cons (list->byte-vector post) (cdr ll)))
                         (iota 0 1 n)))
                    (ll (if (null? pre) stuts (cons (list->byte-vector pre) stuts))))
-                  (values sed-seq-repeat rs ll (inc meta 'seq-repeat) 0)))))
+                  (values sed-seq-repeat rs ll (inc meta 'seq-repeat) delta)))))
 
 
       ;;;
@@ -760,7 +798,7 @@
             ))
 
       (define default-mutations
-         "ss=8,num=6,td=3,tr2=3,ts1=3,tr=3,ts2=3,ld=2,lr2=2,li=2,ls=2,lp=2,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "ss,num,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
@@ -768,15 +806,15 @@
                (print*-to (list "Unknown mutation: " str) stderr)
                #false)))
 
-      ;; #f | (name . priority) → #f | #(max-score priority mutafn name)
+      ;; #f | (name . priority) → #f | #(max-score/2 priority mutafn name)
       (define (priority->fuzzer node)
          (cond
             ((not node) #false)
             ((name->mutation (car node)) => 
-               (λ (func) (tuple max-score (cdr node) func (car node))))
+               (λ (func) (tuple (>> max-score 1) (cdr node) func (car node))))
             (else #false)))
 
-      ; limit to [2 ... 100]
+      ; limit to [min-score .. max-score]
       (define (adjust-priority pri delta)
          (if (eq? delta 0)
             pri
@@ -786,9 +824,10 @@
       (define (weighted-permutation rs pris)
          ;; show a sorted probability distribution 
          (stderr-probe
-             (lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
-                    (all (fold + 0 (map car probs))))
-                   (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
+             ;(lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
+             ;       (all (fold + 0 (map car probs))))
+             ;      (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
+            (sort car> (map (λ (x) (cons (ref x 1) (ref x 4))) pris))
             (lets    
                ((rs ppris ; ((x . (pri . fn)) ...)
                   (fold-map
