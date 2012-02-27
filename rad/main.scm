@@ -18,7 +18,7 @@
 
    (begin
 
-      (define version-str "Radamsa 0.3d") ;; aka funny fold
+      (define version-str "Radamsa 0.3e") ;; aka funny fold
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
@@ -72,7 +72,7 @@
          (print " file: read data from given files")
          (print " random: generate random data"))
 
-      ;; drop B like ls -h
+      ;; drop B as implied
       (define (verbose-size n)
          (define (verb n u)
             (if (or (< n 1024) (null? (cdr u)))
@@ -103,8 +103,7 @@
 
       (define (maybe-printer verbose)
          (if verbose
-            (λ (args) 
-               (print*-to args stderr))
+            (λ (args) (print*-to args stderr))
             (λ (args) args)))
 
       ;; dict args → rval

@@ -798,7 +798,7 @@
             ))
 
       (define default-mutations
-         "ss,num,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "ss=2,num=2,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
