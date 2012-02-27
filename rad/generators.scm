@@ -6,7 +6,8 @@
 
    (import
       (owl base)
-      (rad shared))
+      (rad shared)
+      (only (owl primop) halt))
 
    (export 
       string->generator-priorities         ;; done at cl args parsing time
@@ -85,22 +86,27 @@
                (random-stream (seed->rands seed))
                (put #false 'generator 'random))))
 
+      ;; paths → (rs → rs' ll|#false meta|error-str)
       (define (file-streamer paths)
          (lets
             ((paths (list->vector paths))
              (n (vec-len paths)))
             (define (gen rs)
-               (lets
-                  ((rs n (rand rs n))
-                   (path (vec-ref paths n))
-                   (port (open-input-file path)))
-                  (if port
-                     (lets ((rs ll (port->stream rs port)))
-                        (values rs ll 
-                           (list->ff (list '(generator . file) (cons 'source path)))))
-                     (begin   
-                        (print*-to (list "Warning: failed to open given sample path " path) stderr)
-                        (gen rs)))))
+               ;; todo: approximates failing after trying a random permutation of paths
+               (let loop ((rs rs) (tries 0))
+                  (if (= tries 100)
+                     (values rs #false "Cannot read")
+                     (lets
+                        ((rs n (rand rs n))
+                         (path (vec-ref paths n))
+                         (port (open-input-file path)))
+                        (if port
+                           (lets ((rs ll (port->stream rs port)))
+                              (values rs ll 
+                                 (list->ff (list '(generator . file) (cons 'source path)))))
+                           (begin   
+                              (print*-to (list "Warning: failed to open given sample path " path) stderr)
+                              (loop rs (+ tries 1))))))))
             gen))
 
       (define (string->generator-priorities str)

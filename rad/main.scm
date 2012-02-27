@@ -153,8 +153,9 @@
                         (begin
                            (record-meta 'close)
                            0)
-                        (lets
+                        (lets/cc ret
                            ((rs ll meta (gen rs))
+                            (_ (if (not ll) (begin (print*-to (list meta) stderr) (ret 2))))
                             (meta (put meta 'nth p))
                             (out fd meta (out meta))
                             (rs muta meta n-written 
