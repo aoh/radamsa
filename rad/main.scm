@@ -18,7 +18,7 @@
 
    (begin
 
-      (define version-str "Radamsa 0.3e") ;; aka funny fold
+      (define version-str "Radamsa 0.3f") ;; aka funny fold
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
@@ -30,7 +30,7 @@
               (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
                   default "1" comment "how many outputs to generate")
               (seed "-s" "--seed" cook ,string->integer comment "random seed (number, default random)")
-              (mutations "-m" "--mutations" cook ,string->mutator 
+              (mutations "-m" "--mutations" cook ,string->mutators ;; seed not yet known so intermediate value here
                   comment "which mutations to use"
                   default ,default-mutations) ;; these come from (rad mutations)
               (patterns "-p" "--patterns" cook ,string->patterns
@@ -138,6 +138,8 @@
                         (getf dict 'verbose)
                         fail))
                    (n (getf dict 'count))
+                   (mutas (getf dict 'mutations))
+                   (rs muta (mutators->mutator rs mutas))
                    (gen 
                      (generator-priorities->generator rs
                         (getf dict 'generators) paths fail (getf dict 'count))))
@@ -145,7 +147,7 @@
                      (list 'seed (getf dict 'seed)))
                   (let loop 
                      ((rs rs)
-                      (muta (getf dict 'mutations))
+                      (muta muta)
                       (pat (getf dict 'patterns))
                       (out (get dict 'output 'bug))
                       (p 1))

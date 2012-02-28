@@ -12,14 +12,15 @@
    (export 
       *mutations*
       default-mutations
-      string->mutator)
+      string->mutators          ;; cmdline-string → (mutator-node ...)
+      mutators->mutator)        ;; rs (mutator-node ...) → rs' mutator
 
    (begin
 
       (define min-score 2)   ;; occurrence-priority = score*priority / total
       (define max-score 20)
 
-      (define p-weakly-usually 51/100)
+      (define p-weakly-usually 11/20)
 
       ;;;
       ;;; Random delta generators for random priority steppers
@@ -302,6 +303,7 @@
 
       ;; suffix surf
 
+      ;; todo: move suffix mutations to a separate library or to (rad generic)
       (define (match-prefix lst p)
          (cond
             ((null? p) #true)
@@ -806,12 +808,13 @@
                (print*-to (list "Unknown mutation: " str) stderr)
                #false)))
 
-      ;; #f | (name . priority) → #f | #(max-score/2 priority mutafn name)
+      ;;                                     ,---> is randomized after knowing seed
+      ;; #f | (name . priority) → #f | #(max-score priority mutafn name)
       (define (priority->fuzzer node)
          (cond
             ((not node) #false)
             ((name->mutation (car node)) => 
-               (λ (func) (tuple (>> max-score 1) (cdr node) func (car node))))
+               (λ (func) (tuple max-score (cdr node) func (car node))))
             (else #false)))
 
       ; limit to [min-score .. max-score]
@@ -868,14 +871,26 @@
                   (else 
                      (loop (ll)))))))
 
-      ;; str → mutator | #f
-      (define (string->mutator str)
+      ;; randomize mutator scores 
+      (define (mutators->mutator rs mutas)
+         (let loop ((rs rs) (mutas mutas) (out null))
+            (if (null? mutas)
+               (stderr-probe  
+                  (map 
+                     (λ (node) (list (ref node 4) 'score (ref node 1) 'pri (ref node 2)))
+                     (sort (λ (a b) (> (* (ref a 1) (ref a 2)) (* (ref b 1) (ref b 2)))) out))
+                  (values rs (mux-fuzzers out)))
+               (lets ((rs n (rand rs max-score)))
+                  (loop rs (cdr mutas) (cons (set (car mutas) 1 (max 2 n)) out))))))
+
+      ;; str → (mutator-node ...) | #f, parse cmdline arg but no randomization yet (seed may not be known)
+      (define (string->mutators str)
          (lets
             ((ps (map c/=/ (c/,/ str))) ; ((name [priority-str]) ..)
              (ps (map selection->priority ps))
              (fs (map priority->fuzzer ps)))
             (if (all self fs) 
-               (mux-fuzzers fs)
+               fs
                #false)))
 
 ))
