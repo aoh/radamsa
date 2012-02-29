@@ -81,10 +81,30 @@
          (list->string
             (verb n '("" "K" "M" "T" "P"))))
 
+      (define (serialize-meta val)
+         (if (ff? val)
+            (ff-fold
+               (λ (out key val)
+                  (render key
+                     (ilist #\: #\space
+                        ((if (string? val) serialize render)
+                           val
+                           (if (null? out)
+                              '(#\newline)
+                              (ilist #\, #\space out))))))
+               null val)))
+
+      ;; ... → (ff | seed | 'close → ...)
       (define (maybe-meta-logger path verbose? fail)
          (define verb 
             (if verbose? 
-               (λ (x) (if (ff? x) (print*-to (list " - " (get x 'path "output") ": " (verbose-size (get x 'length 0))) stderr)))
+               (λ (x) 
+                  (cond
+                     ((eq? x 'close) 42)
+                     ((getf x 'seed) =>
+                        (λ (seed) (print*-to (list "Random seed: " seed) stderr)))
+                     (else
+                        (print*-to (list " - " (get x 'path "output") ": " (verbose-size (get x 'length 0))) stderr))))
                (λ (x) x)))
          (cond
             (path
@@ -93,7 +113,7 @@
                      (λ (stuff)
                         (if (eq? stuff 'close)
                            (if (not (eq? port stdout)) (close-port port))
-                           (mail port (serialize stuff '(10))))
+                           (mail port (serialize-meta stuff)))
                         (verb stuff))
                      (fail "Cannot open metadata log file"))))
             (verbose?
@@ -143,8 +163,8 @@
                    (gen 
                      (generator-priorities->generator rs
                         (getf dict 'generators) paths fail (getf dict 'count))))
-                  (record-meta 
-                     (list 'seed (getf dict 'seed)))
+                  ;; possibly save the seed to metadata
+                  (record-meta (put #false 'seed (getf dict 'seed)))
                   (let loop 
                      ((rs rs)
                       (muta muta)
