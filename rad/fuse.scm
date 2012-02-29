@@ -83,9 +83,12 @@
          (let ((nodes (list (cons (suffixes a) (suffixes b)))))
             (let loop ((rs rs) (prob 8))
                (lets ((rs a b (try-pair rs nodes prob)))
-                  (if a 
-                     (values rs a b)
-                     (loop rs (>> prob 1))))))) ;; always terminates immediately if 1
+                  (cond
+                     (a (values rs a b))
+                     ((= prob 1) ;; escape 
+                        (values rs (caaar nodes) (cadar nodes)))
+                     (else
+                        (loop rs (>> prob 1)))))))) ;; always terminates immediately if 1
 
       (define (fuse rs al bl)
          (cond
@@ -93,4 +96,17 @@
             ((null? bl) (values rs al))
             (else
                (lets ((rs a b (find-pair rs al bl)))
-                  (values rs (jump al a b))))))))
+                  (values rs (jump al a b))))))
+
+      #|(let loop ((rs (seed->rands (time-ms))))
+         (lets
+            ((rs al (rand rs 10))
+             (rs bl (rand rs 10))
+             (rs a (random-numbers rs 4 al))
+             (rs b (random-numbers rs 4 bl))
+             (_ (print (list a '+ b)))
+             (rs x (fuse rs a b))
+             (_ (print (list a '+ b '= x))))
+            (loop rs)))|#
+
+))
