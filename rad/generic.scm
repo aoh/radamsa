@@ -5,7 +5,8 @@
 (define-library (rad generic)
 
    (import
-      (owl base))
+      (owl base)
+      (rad fuse))
 
    (export
       list-del      ;; rs l → rs' l'
@@ -14,6 +15,7 @@
       list-repeat   ;; same
       list-swap     ;; etc
       list-perm     ;
+      list-fuse
    )
 
    (begin
@@ -112,6 +114,14 @@
                 (rs to (rand rs len)))
                (values rs (lins l to (lref l from))))))
 
+      ;; connect prefix of al somewhere to bl, and make sure that (list-fuse l l) != l
+      (define list-fuse fuse)
+
+
+      ;;;
+      ;;; Testing
+      ;;;
+
       (define (show rs op data)
          (lets ((rs out (op rs data)))
             (print* (list " - " data " → " out " using " op))))
@@ -124,5 +134,6 @@
          (show rs list-dup data)
          (show rs list-clone data)
          (show rs list-perm data))
+
 ))
 
