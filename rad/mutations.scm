@@ -300,20 +300,37 @@
 
 
 
-
       ;;;
-      ;;; Byte Sequences
+      ;;; Shared sequences
       ;;;
 
-      (define (sed-seq-surf rs ll meta) ;; jump between two shared suffixes in the block
+      ;; (a b ...) → (a+a b ...)
+      (define (sed-fuse-this rs ll meta) ;; jump between two shared suffixes in the block
          (lets
             ((lst (vector->list (car ll)))
              (rs lst (list-fuse rs lst lst))
              (rs d (rand-delta-up rs)))
-            (values sed-seq-surf rs 
+            (values sed-fuse-this rs 
                (flush-bvecs lst (cdr ll))
-               (inc meta 'seq-surf)
+               (inc meta 'fuse-this)
                d)))
+
+      ;; (a b ...) → (a+b+a b ...)
+      (define (sed-fuse-next rs ll meta)
+         (lets
+            ((al (vector->list (car ll)))
+             (b ll (uncons (cdr ll) (car ll))) ;; next or current
+             (bl (vector->list b))
+             (rs abl (list-fuse rs al bl))
+             (rs abal (list-fuse rs abl al))
+             (rs d (rand-delta-up rs)))
+            (values sed-fuse-next rs 
+               (flush-bvecs abal ll)
+               (inc meta 'fuse-next)
+               d)))
+      ;;;
+      ;;; Byte Sequences
+      ;;;
 
       ;; stutter 
 
@@ -679,7 +696,6 @@
 
             ;; [s]equence of bytes
 
-            (tuple "ss" sed-seq-surf "jump to a similar position in block")
             (tuple "sr" sed-seq-repeat "repeat a sequence of bytes")
 
             ;; token
@@ -709,10 +725,14 @@
             ;; special
             (tuple "num" sed-num "modify a textual number")
 
+            ;; suffix (aka fuse)
+            (tuple "ft" sed-fuse-this "jump to a similar position in block")
+            (tuple "fn" sed-fuse-next "likely clone data between similar positions")
+
             ))
 
       (define default-mutations
-         "ss=2,num=2,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "fb=2,fi,num=2,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
 
       (define (name->mutation str)
          (or (choose *mutations* str)

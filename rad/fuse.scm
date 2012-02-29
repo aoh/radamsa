@@ -88,9 +88,9 @@
                      (loop rs (>> prob 1))))))) ;; always terminates immediately if 1
 
       (define (fuse rs al bl)
-         (lets ((rs a b (find-pair rs al bl)))
-            (values rs (jump al a b))))
-
-      ;(lets ((rs l (fuse (seed->rands (time-ms)) '(1 2 3 a b c 4) '(5 6 a b c 7 8 9))))
-      ;   (print l))
-))
+         (cond
+            ((null? al) (values rs bl))
+            ((null? bl) (values rs al))
+            (else
+               (lets ((rs a b (find-pair rs al bl)))
+                  (values rs (jump al a b))))))))
