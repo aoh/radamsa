@@ -177,6 +177,7 @@
                   (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
                      (values rs which (cons (car lst) tail)))))))
 
+      ;; todo: fixed scores, should be randomized
       (define (sed-num rs ll meta) ;; edit a number
          (lets
             ((lst (vec->list (car ll)))
@@ -185,8 +186,11 @@
              (lst (flush-bvecs lst (cdr ll))))
             (cond
                ((eq? n 0) 
-                  ;; no numbers, even accidental ones in binary
-                  (values sed-num rs lst meta -1))
+                  ;; low priority negative, because could be textual with less frequent numbers
+                  (lets ((rs n (rand rs 10)))
+                     (if (eq? n 0)
+                        (values sed-num rs lst meta -1)
+                        (values sed-num rs lst meta 0))))
                (bin?
                   ;; found, but this looks a bit binary
                   (values sed-num rs lst (inc meta 'muta-num) -1))
