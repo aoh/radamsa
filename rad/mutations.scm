@@ -18,7 +18,7 @@
    (begin
 
       (define min-score 2)   ;; occurrence-priority = score*priority / total
-      (define max-score 20)
+      (define max-score 10)
 
       (define p-weakly-usually 11/20)
 
@@ -442,6 +442,7 @@
       (define (sed-utf8-widen rs ll meta)
          (lets 
             ((rs p (rand rs (sizeb (car ll))))
+             (rs d (rand-delta rs))
              (ll
                (cons
                   (edit-byte-vector (car ll) p
@@ -453,16 +454,17 @@
                            ;; fixme: find the next valid point (if any) and do this properly
                            (cons old tl))))
                   (cdr ll))))
-            (values sed-utf8-widen rs ll (inc meta 'utf8-widen) 0)))
+            (values sed-utf8-widen rs ll (inc meta 'utf8-widen) d)))
 
       ;; insert UTF-8 that might be mishandled
       (define (sed-utf8-insert rs ll meta)
          (lets
             ((rs p (rand rs (sizeb (car ll)))) 
+             (rs d (rand-delta rs))
              (rs bytes (rand-elem rs funny-unicode)))
             (values sed-utf8-insert rs 
                (cons (edit-byte-vector (car ll) p (λ (old tl) (append bytes (cons old tl)))) (cdr ll))
-               (inc meta 'utf8-insert) 0)))
+               (inc meta 'utf8-insert) d)))
 
 
       ;;;
@@ -797,7 +799,9 @@
                                  (if (equal? (car ll) (car mll)) 
                                     ;; try something else if no changes, but update state
                                     (loop (cdr pfs) out rs)
-                                    (values (mux-fuzzers (append out (cdr pfs))) rs mll mmeta)))))))
+                                    (stderr-probe
+                                       (list 'used mname) ; <- allow tracing and counting easily via stderr while testing
+                                       (values (mux-fuzzers (append out (cdr pfs))) rs mll mmeta))))))))
                   ((null? ll)
                      (values (mux-fuzzers fs) rs ll meta))
                   (else 
