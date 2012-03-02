@@ -45,10 +45,12 @@
                (let ((block (get-block port wanted)))
                   (cond
                      ((eof? block) ;; end of stream
-                        (if (not (eq? port stdin)) (close-port port))
+                        ;(if (not (eq? port stdin)) (close-port port))
+                        (if (not (eq? port stdin)) (fclose port))
                         (if last (list last) null))
                      ((not block) ;; read error
-                        (if (not (eq? port stdin)) (close-port port))
+                        ;(if (not (eq? port stdin)) (close-port port))
+                        (if (not (eq? port stdin)) (fclose port))
                         (if last (list last) null))
                      ((eq? (sizeb block) (+ wanted 1))
                         ;; a block of required (deterministic) size is ready
@@ -112,7 +114,7 @@
                      (lets
                         ((rs n (rand rs n))
                          (path (vec-ref paths n))
-                         (port (open-input-file path)))
+                         (port (open-input-fd path)))
                         (if port
                            (lets ((rs ll (port->stream rs port)))
                               (values rs ll 
