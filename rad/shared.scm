@@ -17,6 +17,7 @@
       choose-pri
       car>
       length<
+      stderr-probe
       )
 
    (begin
@@ -24,7 +25,14 @@
       (define avg-block-size 4096)        ; average block size when streaming sample data
       (define initial-ip 24)              ; initial max 1/n for basic patterns
       (define remutate-probability 4/5)   ; probability of each mutation being followed by a new one in nd
-      
+
+      ;; simple runtime event tracing
+      (define-syntax stderr-probe
+         (syntax-rules ()
+            ;((stderr-probe thing value) (begin (print-to thing stderr) value)) ;; probes enabled
+            ((stderr-probe thing value) value) ;; probes disabled
+      ))
+
       (define max-block-size (* 2 avg-block-size))
 
       ;; (< (length l) n) for potentially long lists
@@ -65,6 +73,7 @@
                (else
                   (print*-to (list "Too many things: " lst) stderr)
                   #false))))
+
       ; ((p . a) ...) n → x
       (define (choose-pri l n)
          (let ((this (caar l)))

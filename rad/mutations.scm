@@ -40,13 +40,6 @@
                (values rs +1)
                (values rs -1))))
 
-      ;; simple runtime event tracing
-      (define-syntax stderr-probe 
-         (syntax-rules ()
-            ;((stderr-probe thing value) (begin (print-to thing stderr) value)) ;; probes enabled
-            ((stderr-probe thing value) value) ;; probes disabled
-            ))
-
       ;; quick peek if the data looks possibly binary
       ;; quick stupid version: ignore UTF-8, look for high bits
       (define (binarish? lst)
@@ -793,7 +786,8 @@
                               (lets
                                  ((node (car pfs))
                                   (mscore mpri mfn mname node)
-                                  (mfn rs mll mmeta delta (mfn rs ll meta))
+                                  (mfn rs mll mmeta delta 
+                                    ((stderr-probe (list 'trying mname) mfn) rs ll meta))
                                   (out ;; always remember whatever was learned
                                     (cons (tuple (adjust-priority mscore delta) mpri mfn mname) out)))
                                  (if (equal? (car ll) (car mll)) 

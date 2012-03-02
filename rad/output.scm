@@ -6,6 +6,7 @@
 
    (import
       (owl base)
+      (only (owl primop) halt)
       (rad shared))
 
    (export
@@ -16,21 +17,21 @@
 
       ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
       (define (output ll fd)
-         (let loop ((ll ll) (n 0))
-            (lets ((x ll (uncons ll #false)))
-               (cond
-                  ((not x)
-                     (error "output:" "no trailing state"))
-                  ((byte-vector? x)
-                     (mail fd x)
-                     (loop ll (+ n (vec-len x))))
-                  ((tuple? x)
-                     (flush-port fd)
-                     (if (not (eq? fd stdout)) (close-port fd))
-                     (lets ((rs muta meta x))
-                        (values rs muta meta n)))
-                  (else
-                     (error "output: bad node: " x))))))
+         (lets ((res n (blocks->fd ll fd)))
+            (cond
+               ((not res) (halt 111)) ;; ungraceful direct exit on write errors
+               ((and (pair? res) (tuple? (car res)))
+                  ;; valid exit with latest and greatest states in a tuple
+                  (lets
+                     ((states (car res))
+                      (rs muta meta states))
+                     (if (not (eq? fd stdout))
+                        (close-port fd)) ;; closes the opened thread also, later not needed
+                     (values rs muta meta n)))
+               (else
+                  (print*-to (list "Invalid data in output: " (car res)) stderr)
+                  (wait 100)
+                  (halt 121)))))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 
