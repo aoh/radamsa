@@ -29,7 +29,7 @@
       ;; simple runtime event tracing
       (define-syntax stderr-probe
          (syntax-rules ()
-            ;((stderr-probe thing value) (begin (print-to thing stderr) value)) ;; probes enabled
+            ;((stderr-probe thing value) (begin (print-to stderr thing) value)) ;; probes enabled
             ((stderr-probe thing value) value) ;; probes disabled
       ))
 
@@ -61,17 +61,17 @@
                   (let ((pri (string->number (cadr lst) 10)))
                      (cond
                         ((not pri)
-                           (print*-to (list "Bad priority: " (cadr lst)) stderr)
+                           (print*-to stderr (list "Bad priority: " (cadr lst)))
                            #false)
                         ((< pri 0) ;; allow 0 to set a fuzzer off
-                           (print*-to (list "Inconceivable: " (cadr lst)) stderr)
+                           (print*-to stderr (list "Inconceivable: " (cadr lst)))
                            #false)
                         (else
                            (cons (car lst) pri)))))
                ((= l 1)
                   (cons (car lst) 1))
                (else
-                  (print*-to (list "Too many things: " lst) stderr)
+                  (print*-to stderr (list "Too many things: " lst))
                   #false))))
 
       ; ((p . a) ...) n → x

@@ -26,19 +26,6 @@
             (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
             tail))
 
-      (define sid (fd->id 65535))
-
-      ;; direct io 
-      (define (get-block fd n)
-         (let ((block-size (+ n 1)))
-            (let loop ()
-               (let ((res (sys-prim 5 fd block-size 0)))
-                  (if (eq? res #true) ;; would block, try again later
-                     (begin
-                        (interact sid 5) ;; sleep possibly letting also cpu to sleep
-                        (loop))
-                     res)))))
-
       (define (stream-port rs port)
          (lets ((rs first (rand-block-size rs)))
             (let loop ((rs rs) (last #false) (wanted first)) ;; 0 = block ready (if any)
@@ -114,13 +101,13 @@
                      (lets
                         ((rs n (rand rs n))
                          (path (vec-ref paths n))
-                         (port (open-input-fd path)))
+                         (port (open-input-file path)))
                         (if port
                            (lets ((rs ll (port->stream rs port)))
                               (values rs ll 
                                  (list->ff (list '(generator . file) (cons 'source path)))))
                            (begin   
-                              (print*-to (list "Warning: failed to open given sample path " path) stderr)
+                              (print*-to stderr (list "Warning: failed to open given sample path " path))
                               (loop rs (+ tries 1))))))))
             gen))
 

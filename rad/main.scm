@@ -49,7 +49,7 @@
       (define (urandom-seed)
          (let ((fd (open-input-file "/dev/urandom"))) ;; #false if not there
             (if fd
-               (let ((data (interact fd 10)))
+               (let ((data (get-block fd 10)))
                   (close-port fd)
                   (if (vector? data)
                      (vec-fold (λ (n d) (+ d (<< n 8))) 0 data)
@@ -102,9 +102,9 @@
                   (cond
                      ((eq? x 'close) 42)
                      ((getf x 'seed) =>
-                        (λ (seed) (print*-to (list "Random seed: " seed) stderr)))
+                        (λ (seed) (print*-to stderr (list "Random seed: " seed))))
                      (else
-                        (print*-to (list " - " (get x 'path "output") ": " (verbose-size (get x 'length 0))) stderr))))
+                        (print*-to stderr (list " - " (get x 'path "output") ": " (verbose-size (get x 'length 0)))))))
                (λ (x) x)))
          (cond
             (path
@@ -113,7 +113,7 @@
                      (λ (stuff)
                         (if (eq? stuff 'close)
                            (if (not (eq? port stdout)) (close-port port))
-                           (mail port (serialize-meta stuff)))
+                           (write-bytes port (serialize-meta stuff)))
                         (verb stuff))
                      (fail "Cannot open metadata log file"))))
             (verbose?
@@ -123,7 +123,7 @@
 
       (define (maybe-printer verbose)
          (if verbose
-            (λ (args) (print*-to args stderr))
+            (λ (args) (print*-to stderr args))
             (λ (args) args)))
 
       ;; dict args → rval
@@ -177,7 +177,7 @@
                            0)
                         (lets/cc ret
                            ((rs ll meta (gen rs))
-                            (_ (if (not ll) (begin (print*-to (list meta) stderr) (ret 2))))
+                            (_ (if (not ll) (begin (print*-to stderr (list meta)) (ret 2))))
                             (meta (put meta 'nth p))
                             (out fd meta (out meta))
                             (rs muta meta n-written 

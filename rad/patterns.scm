@@ -85,7 +85,7 @@
             (if func
                (cons (cdr pri) func)
                (begin
-                  (print*-to (list "Unknown pattern: " (cdr pri)) stderr)
+                  (print*-to stderr (list "Unknown pattern: " (cdr pri)))
                   #false))))
 
       ;; ((pri . pat) ...) → (rs ll muta meta → <pattern output>)

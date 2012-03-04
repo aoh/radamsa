@@ -17,7 +17,7 @@
 
       ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
       (define (output ll fd)
-         (lets ((res n (blocks->fd ll fd)))
+         (lets ((res n (blocks->port ll fd)))
             (cond
                ((not res) (halt 111)) ;; ungraceful direct exit on write errors
                ((and (pair? res) (tuple? (car res)))
@@ -29,8 +29,7 @@
                         (close-port fd)) ;; closes the opened thread also, later not needed
                      (values rs muta meta n)))
                (else
-                  (print*-to (list "Invalid data in output: " (car res)) stderr)
-                  (wait 100)
+                  (print*-to stderr (list "Invalid data in output: " (car res)))
                   (halt 121)))))
 
       (define (stdout-stream meta)
@@ -55,7 +54,7 @@
                         null pat)))
                 (port (open-output-file path)))
                (if (not port)
-                  (print*-to (list "Warning: cannot write to '" path "'") stderr))
+                  (print*-to stderr (list "Warning: cannot write to '" path "'")))
                (values gen port (put (put meta 'output 'file-writer) 'path path))))
          gen)
 

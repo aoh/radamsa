@@ -732,7 +732,7 @@
       (define (name->mutation str)
          (or (choose *mutations* str)
              (begin
-               (print*-to (list "Unknown mutation: " str) stderr)
+               (print*-to stderr (list "Unknown mutation: " str))
                #false)))
 
       ;;                                     ,---> is randomized after knowing seed
@@ -756,7 +756,7 @@
          (stderr-probe
              ;(lets ((probs (sort car> (map (λ (x) (cons (* (ref x 1) (ref x 2)) (ref x 4))) pris)))
              ;       (all (fold + 0 (map car probs))))
-             ;      (print*-to (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs)) stderr))
+             ;      (print*-to stderr (list "probs: " (map (λ (node) (cons (floor (/ (* (car node) 100) all)) (cdr node))) probs))))
             (sort car> (map (λ (x) (cons (ref x 1) (ref x 4))) pris))
             (lets    
                ((rs ppris ; ((x . (pri . fn)) ...)
