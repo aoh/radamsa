@@ -1,0 +1,17 @@
+#!/bin/sh
+
+SAMPLE=rad/main.scm
+TIMES=100
+#SEED=`date '+%s'`
+SEED=313333333337
+
+echo "Single mutation timings: mutate $SAMPLE $TIMES times, one mutation each"
+echo "Radamsa: $@"
+
+for mutation in $($@ --list | grep "^ " | sed 's/ *\([^:]*\):.*/\1/')
+do
+   echo $mutation | grep -q "^od$" && break
+   ELAPSED=`time -f "%Us" $@ -s $SEED -p od -m $mutation -o tmp/out-%n -n $TIMES $SAMPLE 2>&1`
+   echo " $ELAPSED $mutation"
+done | sort -n
+

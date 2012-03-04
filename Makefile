@@ -52,6 +52,10 @@ bytecode:
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 
+# a simple mutation benchmark
+benchmark: bin/radamsa
+	tests/benchmark bin/radamsa
+
 deps:
 	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
 	which ol || make get-owl
