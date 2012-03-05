@@ -308,19 +308,31 @@
                (inc meta 'fuse-this)
                d)))
 
+      ;; lst → a b, a ++ b == lst, length a = length b +/- 1
+      (define (split lst)
+         (define (walk t h out)
+            (if (null? h)
+               (values (reverse out) t)
+               (let ((h (cdr h)))
+                  (if (null? h)
+                     (values (reverse out) t)
+                     (walk (cdr t) (cdr h) (cons (car t) out))))))
+         (walk lst lst null))
+
       ;; (a b ...) → (a+b+a b ...)
       (define (sed-fuse-next rs ll meta)
          (lets
-            ((al (vector->list (car ll)))
+            ((al1 al2 (split (vector->list (car ll))))
              (b ll (uncons (cdr ll) (car ll))) ;; next or current
              (bl (vector->list b))
-             (rs abl (list-fuse rs al bl))
-             (rs abal (list-fuse rs abl al))
+             (rs abl (list-fuse rs al1 bl))
+             (rs abal (list-fuse rs abl al2))
              (rs d (rand-delta-up rs)))
             (values sed-fuse-next rs 
                (flush-bvecs abal ll)
                (inc meta 'fuse-next)
                d)))
+
       ;;;
       ;;; Byte Sequences
       ;;;
