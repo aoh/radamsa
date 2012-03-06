@@ -39,7 +39,7 @@
                         ;(if (not (eq? port stdin)) (close-port port))
                         (if (not (eq? port stdin)) (fclose port))
                         (if last (list last) null))
-                     ((eq? (sizeb block) (+ wanted 1))
+                     ((eq? (sizeb block) wanted)
                         ;; a block of required (deterministic) size is ready
                         (lets
                            ((block (merge last block))
