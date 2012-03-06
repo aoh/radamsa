@@ -329,9 +329,25 @@
              (rs abal (list-fuse rs abl al2))
              (rs d (rand-delta-up rs)))
             (values sed-fuse-next rs 
-               (flush-bvecs abal ll)
+               (flush-bvecs abal ll) ;; <- on avg 1x, max 2x block sizes
                (inc meta 'fuse-next)
                d)))
+
+      (define (sed-fuse-old rs ll meta)
+         (define (remember block)
+            (λ (rs ll meta)
+               (lets
+                  ((al1 al2 (halve (vector->list (car ll))))
+                   (ol1 ol2 (halve (vector->list block)))
+                   (rs a (list-fuse rs al1 ol1)) ; a -> o
+                   (rs b (list-fuse rs ol2 al2)) ; o -> a
+                   (rs d (rand-delta-up rs)))
+                  (values (remember (car ll)) rs 
+                     (flush-bvecs a (flush-bvecs b ll)) ;; <- on avg 1x, max 2x block sizes
+                     (inc meta 'fuse-old)
+                     d))))
+         ((remember (car ll)) rs ll meta))
+
 
       ;;;
       ;;; Byte Sequences
@@ -735,6 +751,7 @@
             ;; suffix (aka fuse)
             (tuple "ft" sed-fuse-this "jump to a similar position in block")
             (tuple "fn" sed-fuse-next "likely clone data between similar positions")
+            (tuple "fo" sed-fuse-old "fuse previously seen data elsewhere")
 
             ))
 
