@@ -17,20 +17,15 @@
 
       ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
       (define (output ll fd)
-         (lets ((res n (blocks->port ll fd)))
-            (cond
-               ((not res) (halt 111)) ;; ungraceful direct exit on write errors
-               ((and (pair? res) (tuple? (car res)))
-                  ;; valid exit with latest and greatest states in a tuple
-                  (lets
-                     ((states (car res))
-                      (rs muta meta states))
-                     (if (not (eq? fd stdout))
-                        (close-port fd)) ;; closes the opened thread also, later not needed
-                     (values rs muta meta n)))
-               (else
-                  (print*-to stderr (list "Invalid data in output: " (car res)))
-                  (halt 121)))))
+         (lets 
+            ((ll n (blocks->port ll fd))
+             (ok? (and (pair? ll) (tuple? (car ll)))) ;; all written?
+             (state (lfold (λ (last block) block) #false ll)) ;; find the last tuple
+             (rs muta meta state))
+            (if (not (eq? fd stdout))
+               (close-port fd))
+            ;; could warn about write errors
+            (values rs muta meta n)))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 
@@ -61,6 +56,11 @@
       (define (tcp-client ip port)
          (print (list "would use " ip " port " port " but won't yet."))
          null)
+
+
+      ;;;
+      ;;; TCP server mode
+      ;;;
 
       ;; ll → ip fd ll' | #f #f ()
       (define (next-client ll)

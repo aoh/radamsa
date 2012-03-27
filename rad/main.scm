@@ -18,7 +18,18 @@
 
    (begin
 
-      (define version-str "Radamsa 0.3f") ;; aka funny fold
+      (define (string->count str)
+         (cond
+            ((mem equal? '("inf" "infinity" "-1" "forever") str)
+               'infinity)
+            ((string->number str 10) =>
+               (λ (n) 
+                  (if (> n 0)
+                     n
+                     #false)))
+            (else #f)))
+
+      (define version-str "Radamsa 0.3") ;; aka funny fold
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
@@ -27,7 +38,7 @@
             `((help "-h" "--help" comment "show this thing")
               (output "-o" "--output" has-arg default "-" cook ,string->outputs
                   comment "where to put the generated data")
-              (count "-n" "--count" cook ,string->integer check ,(λ (x) (> x 0))
+              (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate")
               (seed "-s" "--seed" cook ,string->integer comment "random seed (number, default random)")
               (mutations "-m" "--mutations" cook ,string->mutators ;; seed not yet known so intermediate value here
@@ -171,7 +182,7 @@
                       (pat (getf dict 'patterns))
                       (out (get dict 'output 'bug))
                       (p 1))
-                     (if (< n p)
+                     (if (and (number? n) (< n p)) ; n can be 'infinity
                         (begin
                            (record-meta 'close)
                            0)
