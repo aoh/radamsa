@@ -53,9 +53,36 @@
                (values gen port (put (put meta 'output 'file-writer) 'path path))))
          gen)
 
+
+      ;;;
+      ;;; TCP client mode
+      ;;;
+
+      (define (ip->string ip)
+         (list->string
+            (vec-foldr
+               (λ (this tl)
+                  (render this
+                     (if (null? tl)
+                        tl
+                        (cons #\. tl))))
+               null ip)))
+
       (define (tcp-client ip port)
-         (print (list "would use " ip " port " port " but won't yet."))
-         null)
+         (let ((ips (ip->string ip)))
+            (define (gen meta)
+               (let loop ((n 1)) ;; try to connect repeatedly
+                  (let ((fd (open-connection ip port)))
+                     (if fd
+                        (values 
+                           gen
+                           fd
+                           (put (put (put meta 'output 'tcp-client) 'ip ips) 'port port))
+                        (begin
+                           (if (= 0 (band n #xffff))
+                              (print*-to stderr (list n " connection attempts to " ips ":" port)))
+                           (loop (+ n 1)))))))
+            gen))
 
 
       ;;;
@@ -72,16 +99,6 @@
                   (values (car this) (cdr this) (cdr ll))))
             (else
                (next-client (ll)))))
-
-      (define (ip->string ip)
-         (list->string
-            (vec-foldr
-               (λ (this tl)
-                  (render this
-                     (if (null? tl)
-                        tl
-                        (cons #\. tl))))
-               null ip)))
 
       (define (tcp-server ll)
          (λ (meta)
