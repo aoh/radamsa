@@ -1,4 +1,4 @@
-;;;
+;;; 
 ;;; Radamsa 
 ;;;
 
@@ -33,9 +33,20 @@
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
+      (define about-text 
+
+"Radamsa is a general purpose fuzzer. It is intended to be used for 
+breaking valid sample sample files in ways that might help expose 
+errors in programs processing them. For more information, read the 
+fine manual page or visit http://code.google.com/p/ouspg/
+
+Radamsa is written by Aki Helin at OUSPG.")
+
       (define command-line-rules
          (cl-rules
             `((help "-h" "--help" comment "show this thing")
+              (about "-a" "--about" comment "what is this thing?")
+              (version "-V" "--version" comment "show version information")
               (output "-o" "--output" has-arg default "-" cook ,string->outputs
                   comment "where to put the generated data")
               (count "-n" "--count" cook ,string->count
@@ -53,8 +64,7 @@
               (metadata "-M" "--meta" has-arg
                   comment "save metadata about generated files to this file")
               (list "-l" "--list" comment "list mutations, patterns and generators")
-              (verbose "-v" "--verbose" comment "talk to me more")
-              (version "-V" "--version" comment "show version information"))))
+              (verbose "-v" "--verbose" comment "talk to me more"))))
 
       ;; () → string
       (define (urandom-seed)
@@ -155,6 +165,9 @@
             ((getf dict 'help)
                (print usage-text)
                (print-rules command-line-rules)
+               0)
+            ((getf dict 'about)
+               (print about-text)
                0)
             ((getf dict 'list)
                (show-options)
