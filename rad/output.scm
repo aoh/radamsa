@@ -58,17 +58,70 @@
                (values gen port (put (put meta 'output 'file-writer) 'path path))))
          gen)
 
+      (define (tcp-client ip port)
+         (print (list "would use " ip " port " port " but won't yet."))
+         null)
+
+      ;; ll → ip fd ll' | #f #f ()
+      (define (next-client ll)
+         (cond
+            ((null? ll)
+               (values #f #f null))
+            ((pair? ll)
+               (let ((this (car ll)))
+                  (values (car this) (cdr this) (cdr ll))))
+            (else
+               (next-client (ll)))))
+
+      (define (ip->string ip)
+         (list->string
+            (vec-foldr
+               (λ (this tl)
+                  (render this
+                     (if (null? tl)
+                        tl
+                        (cons #\. tl))))
+               null ip)))
+
+      (define (tcp-server ll)
+         (λ (meta)
+            (lets ((ip fd ll (next-client ll)))
+               (values
+                  (tcp-server ll)
+                  fd
+                  (put (put meta 'output 'tcp-server) 'ip (ip->string ip))))))
+
       ;; args → (out :: → out' fd meta) v null | #false
       (define (string->outputs str)
          (cond
             ((equal? str "-") ;; conventional way to ask for standard output (and input)
                stdout-stream)
             ((m/^:[0-9]+$/ str)
-               (print "This version doesn't yet have TCP server mode.")
-               #false)
+               (let ((port (string->number (s/:// str) 10)))
+                  (if (and (number? port) (< port 65536))
+                     (let ((clis (tcp-clients port)))
+                        (if clis
+                           (tcp-server clis)
+                           (begin
+                              (show "Couldn't bind to local port " port)
+                              #false)))
+                     (begin   
+                        (show "Invalid port: " port)
+                        #false))))
             ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
-               (print "This version doesn't yet have TCP client mode.")
-               #false)
+               (lets
+                  ((ip+port (c/:/ str))
+                   (port (string->number (cadr ip+port) 10))
+                   (ss (c/\./ (car ip+port)))
+                   (bs (map (λ (x) (string->number x 10)) ss)))
+                  (if (and (all number? bs) 
+                           (all (λ (x) (< x 256)) bs)
+                           (number? port)
+                           (< port 65536))
+                     (tcp-client (list->vector bs) port)
+                     (begin
+                        (show "Not a valid target: " str)
+                        #false))))
             (else
                (file-writer str))))
 ))
