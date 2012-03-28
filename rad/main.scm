@@ -42,6 +42,12 @@ visit http://code.google.com/p/ouspg/
 
 Radamsa was written by Aki Helin at OUSPG.")
 
+      (define (string->natural str)
+         (let ((i (string->integer str)))
+            (if (and i (>= i 0))
+               i
+               #false)))
+
       (define command-line-rules
          (cl-rules
             `((help "-h" "--help" comment "show this thing")
@@ -51,7 +57,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "specify where to put the generated data")
               (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate (number or inf)")
-              (seed "-s" "--seed" cook ,string->integer comment "random seed (number, default random)")
+              (seed "-s" "--seed" cook ,string->natural comment "random seed (number, default random)")
               (mutations "-m" "--mutations" cook ,string->mutators ;; seed not yet known so intermediate value here
                   comment "which mutations to use"
                   default ,default-mutations) ;; these come from (rad mutations)
