@@ -1,16 +1,13 @@
-.TH radamsa 1 "June 27, 2011"
+.TH radamsa 1 "March 28, 2012"
 .SH NAME
 radamsa \- a general purpose fuzzer
 .SH SYNOPSIS
 .B radamsa
-.RI [ options ] " -o output-pattern " [ sample-path ] " ..."
+.RI [ options ] " " [ sample-path ] " ..."
 .SH DESCRIPTION
-.B Radamsa 
-is a data fuzzer. It performs more and less in-depth analysis on the given
-.B sample-paths
-and uses the results to write more and less similar data. The
-.B output-pattern
-specifies where the data should be written.
+Radamsa is a general purpose data fuzzer. It reads data from given sample files,
+or standard input if none are given, and outputs modified data. It is usually 
+used to generated malformed data in order to find issues in programs.
 .SH OPTIONS
 This program follows the usual GNU command line syntax, with long
 options starting with two dashes (`-').
@@ -20,10 +17,41 @@ A summary of options is included below.
 Show summary of options.
 .TP
 .B \-v, \-\-version
-Show version of program.
+Show program version..
+.TP
+.B \-o, \-\-output pattern
+Specify where to write the modified data. By default the data is written to standard output. The pattern can be a path, in which %n is filled to be the test case number if present, :n to have the data written to TCP clients connecting to local port n, or a.b.c.d:n to have radamsa connect to port n of IPv4 address a.b.c.d and write each output.
+.TP
+.B \-n, \-\-count n
+How many outputs to generate based on the sample(s). Giving -1 or inf causes data to be generated forever. The default is 1.
+.TP
+.B \-s, \-\-seed n
+Start from random state n, which is a decimal number. Starting from the same random state with the same command line arguments and samples causes the same outputs to be generated. The seed is read from /dev/urandom or current time is used if the seed isn't given explicitly.
+.TP
+.B \-m, \-\-mutations string
+Request the initial mutation probabilities manually. This is generally not recommended and the options will change in the future versions.
+.TP
+.B \-p, \-\-patterns string
+Request the mutation patterns manually. This is generally not recommended and the options will change in the future versions.
+.TP
+.B \-g, \-\-generators string
+Request the data stream generator probabilities manually. This is generally not recommended and the options will change in the future versions.
+.TP
+.B \-M, \-\-meta path
+Write metadata about generated data to given path. - can be used to have the metadata written to standard output. The metadata contains the seed followed by one line per testcase.
+.TP
+.B \-l, \-\-list
+Show all available mutations, patterns and generators along with their descriptions.
+.TP
+.B \-v, \-\-verbose
+Print what is being done.
 .SH EXAMPLES
-Typical usage examples here.
+ $ cat file | radamsa | program -
+ $ radamsa samples/*.foo | program -
+ $ radamsa -o test-%n.foo -n 100 samples/*.foo
+ $ radamsa -o :80 -n inf samples/*.resp 
+ $ radamsa -o 127.0.0.1:80 -n inf samples/*.req 
 .SH SEE ALSO
-.BR fuzz (1), fusil (1), zzuf (1), 
+.BR zzuf (1)
 .SH AUTHOR
-Radamsa and this manual page were written by Aki Helin <aki.helin@iki.fi>.
+Radamsa and this manual page were written by Aki Helin <aki.helin@iki.fi> at OUSPG.

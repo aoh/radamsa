@@ -40,7 +40,7 @@ breaking valid sample sample files in ways that might help expose
 errors in programs processing them. For more information, read the 
 fine manual page or visit http://code.google.com/p/ouspg/
 
-Radamsa is written by Aki Helin at OUSPG.")
+Radamsa was written by Aki Helin at OUSPG.")
 
       (define command-line-rules
          (cl-rules
