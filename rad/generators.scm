@@ -140,7 +140,7 @@
                         (if (first (λ (x) (equal? x "-")) args #false)
                            ;; "-" was given, so start stdin generator + possibly preread
                            (cons priority
-                              (stdin-generator rs (= n 1)))
+                              (stdin-generator rs (eq? n 1)))
                            #false))
                      ((equal? name "file")
                         (let ((args (keep (λ (x) (not (equal? x "-"))) args)))
