@@ -48,17 +48,13 @@ standalone:
 
 # a quick to compile vanilla bytecode executable
 bytecode:
-	ol -O0 -x c -o - rad/main.scm | gcc -O2 -x c -o bin/radamsa -
+	ol -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 
 # a simple mutation benchmark
 benchmark: bin/radamsa
 	tests/benchmark bin/radamsa
-
-deps:
-	which $(CC) || { echo "you need a C-compiler (default gcc)"; false; }
-	which ol || make get-owl
 
 uninstall:
 	rm $(DESTDIR)$(PREFIX)/bin/radamsa || echo "no radamsa"
