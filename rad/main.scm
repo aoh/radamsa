@@ -125,7 +125,9 @@ Radamsa was written by Aki Helin at OUSPG.")
                      ((getf x 'seed) =>
                         (λ (seed) (print*-to stderr (list "Random seed: " seed))))
                      (else
-                        (print*-to stderr (list " - " (get x 'path "output") ": " (verbose-size (get x 'length 0)))))))
+                        (print*-to stderr 
+                           (list " - " (or (getf x 'path) (get x 'ip "output")) 
+                              ": " (verbose-size (get x 'length 0)))))))
                (λ (x) x)))
          (cond
             (path
