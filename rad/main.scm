@@ -35,10 +35,10 @@
 
       (define about-text 
 
-"Radamsa is a general purpose fuzzer. It is intended to be used for 
-breaking valid sample sample files in ways that might help expose 
-errors in programs processing them. For more information, read the 
-fine manual page or visit http://code.google.com/p/ouspg/
+"Radamsa is a general purpose fuzzer. It is intended to be used for
+breaking valid sample files in ways that might expose errors in programs
+processing them. For more information read the fine manual page or
+visit http://code.google.com/p/ouspg/
 
 Radamsa was written by Aki Helin at OUSPG.")
 
@@ -46,11 +46,11 @@ Radamsa was written by Aki Helin at OUSPG.")
          (cl-rules
             `((help "-h" "--help" comment "show this thing")
               (about "-a" "--about" comment "what is this thing?")
-              (version "-V" "--version" comment "show version information")
+              (version "-V" "--version" comment "show program version")
               (output "-o" "--output" has-arg default "-" cook ,string->outputs
-                  comment "where to put the generated data")
+                  comment "specify where to put the generated data")
               (count "-n" "--count" cook ,string->count
-                  default "1" comment "how many outputs to generate")
+                  default "1" comment "how many outputs to generate (number or inf)")
               (seed "-s" "--seed" cook ,string->integer comment "random seed (number, default random)")
               (mutations "-m" "--mutations" cook ,string->mutators ;; seed not yet known so intermediate value here
                   comment "which mutations to use"
@@ -64,7 +64,7 @@ Radamsa was written by Aki Helin at OUSPG.")
               (metadata "-M" "--meta" has-arg
                   comment "save metadata about generated files to this file")
               (list "-l" "--list" comment "list mutations, patterns and generators")
-              (verbose "-v" "--verbose" comment "talk to me more"))))
+              (verbose "-v" "--verbose" comment "show progress during generation"))))
 
       ;; () → string
       (define (urandom-seed)
