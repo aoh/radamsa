@@ -1,4 +1,4 @@
 #!/bin/sh
 
-echo -n ab | $@ -p od -m bd | grep -q "^[ab]$"
+/bin/echo -n ab | $@ -p od -m bd | grep -q "^[ab]$"
 
