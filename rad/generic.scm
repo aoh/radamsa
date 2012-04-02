@@ -10,6 +10,7 @@
 
    (export
       list-del      ;; rs l → rs' l'
+      list-del-seq  ;; rs l → rs' l'
       list-dup      ;; likewise
       list-clone    ;; ditto 
       list-repeat   ;; same
@@ -35,6 +36,23 @@
                ((len (length l))
                 (rs p (rand rs len)))
                (values rs (ldel l p)))))
+
+      ;; delete a sequence of things
+      (define (list-del-seq rs l)
+         (let ((len (length l)))
+            (if (= len 0)
+               (values rs l)
+               (lets
+                  ((rs start (rand rs len))
+                   (rs n (rand rs (- len start))) ;; <- could take min with rand-len
+                   (n (max n 2))
+                   (hd tl (split l start)))
+                  (values rs (append hd (drop tl n)))))))
+
+      '(lets
+         ((rs (fold (λ (rs n) (lets ((rs x (rand rs 124124214124124214))) rs)) (seed->rands (time-ms)) (iota 0 1 1000)))
+          (a b (list-del-seq (seed->rands (expt (time-ms) 3)) '(1 2 3 4 5 6 7 8 9))))
+         (print b))
 
       ;; duplicate a random element
       (define (list-dup rs l)

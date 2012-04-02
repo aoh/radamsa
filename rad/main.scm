@@ -29,7 +29,7 @@
                      #false)))
             (else #f)))
 
-      (define version-str "Radamsa 0.3") ;; aka funny fold
+      (define version-str "Radamsa 0.3.1a") ;; aka funny fold
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
