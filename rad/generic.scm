@@ -45,7 +45,6 @@
                (lets
                   ((rs start (rand rs len))
                    (rs n (rand rs (- len start))) ;; <- could take min with rand-len
-                   (n (max n 2))
                    (hd tl (split l start)))
                   (values rs (append hd (drop tl n)))))))
 

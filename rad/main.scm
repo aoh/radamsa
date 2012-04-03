@@ -209,7 +209,6 @@ Radamsa was written by Aki Helin at OUSPG.")
                            0)
                         (lets/cc ret
                            ((rs ll meta (gen rs))
-                            (_ (if (not ll) (begin (print*-to stderr (list meta)) (ret 2))))
                             (meta (put meta 'nth p))
                             (out fd meta (out meta))
                             (rs muta meta n-written 

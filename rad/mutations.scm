@@ -353,6 +353,8 @@
       ;;; Byte Sequences
       ;;;
 
+      ;; todo: convert these to use the generic ones 
+
       ;; stutter 
 
       (define (sed-seq-repeat rs ll meta)
@@ -378,6 +380,17 @@
                    (ll (if (null? pre) stuts (cons (list->byte-vector pre) stuts))))
                   (values sed-seq-repeat rs ll (inc meta 'seq-repeat) delta)))))
 
+      (define (sed-seq-del rs ll meta)
+         (lets 
+            ((l (vector->list (car ll)))
+             (rs l (list-del-seq rs l))
+             (rs delta (rand-delta rs)))
+            (values sed-seq-del rs
+               (if (null? l)
+                  (cdr ll)
+                  (cons (list->byte-vector l) (cdr ll)))
+               (inc meta 'sed-seq-del)
+               delta)))
 
       ;;;
       ;;; Lines
@@ -420,6 +433,7 @@
          self)
 
       (define sed-line-del (line-op list-del 'line-del))
+      (define sed-line-del-seq (line-op list-del-seq 'line-del-seq))
       (define sed-line-dup (line-op list-dup 'line-dup))
       (define sed-line-clone (line-op list-clone 'line-clone))
       (define sed-line-repeat (line-op list-repeat 'line-repeat))
@@ -720,12 +734,14 @@
             ;; [s]equence of bytes
 
             (tuple "sr" sed-seq-repeat "repeat a sequence of bytes")
+            (tuple "sd" sed-seq-del "delete a sequence of bytes")
 
             ;; token
 
             ;; line
             
             (tuple "ld" sed-line-del "delete a line")
+            (tuple "lds" sed-line-del-seq "delete many lines")
             (tuple "lr2" sed-line-dup "duplicate a line")
             (tuple "li" sed-line-clone "clone and insert it nearby")
             (tuple "lr" sed-line-repeat "repeat a line")
@@ -756,7 +772,7 @@
             ))
 
       (define default-mutations
-         "ft=2,fo=2,fn,num=3,td,tr2,ts1,tr,ts2,ld,lr2,li,ls,lp,lr,sr,bd,bf,bi,br,bp,bei,bed,ber,uw,ui")
+         "ft=2,fo=2,fn,num=5,td,tr2,ts1,tr,ts2,ld,lds,lr2,li,ls,lp,lr,sr,sd,bd,bf,bi,br,bp,bei,bed,ber,uw,ui=2")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
