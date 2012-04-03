@@ -835,7 +835,7 @@
                                     ((stderr-probe (list 'trying mname) mfn) rs ll meta))
                                   (out ;; always remember whatever was learned
                                     (cons (tuple (adjust-priority mscore delta) mpri mfn mname) out)))
-                                 (if (equal? (car ll) (car mll)) 
+                                 (if (and (pair? mll) (equal? (car ll) (car mll)))
                                     ;; try something else if no changes, but update state
                                     (loop (cdr pfs) out rs)
                                     (stderr-probe
