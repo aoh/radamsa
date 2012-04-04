@@ -6,7 +6,8 @@
 
    (import 
       (owl base)
-      (rad generic)
+      (rad generic)   ;; shared list mutations
+      (rad split)     ;; heuristic splitting
       (rad shared))
 
    (export 
@@ -732,24 +733,21 @@
             (tuple "ber" sed-byte-dec "swap a byte with a random one")
 
             ;; [s]equence of bytes
-
             (tuple "sr" sed-seq-repeat "repeat a sequence of bytes")
             (tuple "sd" sed-seq-del "delete a sequence of bytes")
 
             ;; token
 
             ;; line
-            
             (tuple "ld" sed-line-del "delete a line")
             (tuple "lds" sed-line-del-seq "delete many lines")
             (tuple "lr2" sed-line-dup "duplicate a line")
-            (tuple "li" sed-line-clone "clone and insert it nearby")
+            (tuple "li" sed-line-clone "copy a line closeby")
             (tuple "lr" sed-line-repeat "repeat a line")
             (tuple "ls" sed-line-swap "swap two lines")
             (tuple "lp" sed-line-perm "swap order of lines")
 
             ;; tree
-
             (tuple "td" sed-tree-del "delete a node")
             (tuple "tr2" sed-tree-dup "duplicate a node")
             (tuple "ts1" sed-tree-swap-one "swap one node with another one")
@@ -757,12 +755,18 @@
             (tuple "tr"  sed-tree-stutter "repeat a path of the parse tree")
 
             ;; utf-8
-
             (tuple "uw" sed-utf8-widen  "try to make a code point too wide")
             (tuple "ui" sed-utf8-insert "insert funny unicode")
 
             ;; special
-            (tuple "num" sed-num "modify a textual number")
+            (tuple "num"   sed-num "try to modify a textual number")
+            ;(tuple "str"  sed-str "try to modify a string")
+            ;(tuple "word" sed-word "try to play with what look like n-byte words or values")
+
+            ;; crlf, whitspace confusion (^L, space, tab, \n->\r\n, \r)
+            ;; lists
+
+            ;; binary content
 
             ;; suffix (aka fuse)
             (tuple "ft" sed-fuse-this "jump to a similar position in block")
@@ -830,9 +834,9 @@
                               (values (mux-fuzzers out) rs ll meta)
                               (lets
                                  ((node (car pfs))
-                                  (mscore mpri mfn mname node)
+                                  (mscore mpri ╯°□°╯ mname node)
                                   (mfn rs mll mmeta delta 
-                                    ((stderr-probe (list 'trying mname) mfn) rs ll meta))
+                                    (╯°□°╯ rs ll meta))
                                   (out ;; always remember whatever was learned
                                     (cons (tuple (adjust-priority mscore delta) mpri mfn mname) out)))
                                  (if (and (pair? mll) (equal? (car ll) (car mll)))
