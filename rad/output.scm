@@ -121,10 +121,10 @@
                         (if clis
                            (tcp-server clis)
                            (begin
-                              (show "Couldn't bind to local port " port)
+                              (print "Couldn't bind to local port " port)
                               #false)))
                      (begin   
-                        (show "Invalid port: " port)
+                        (print "Invalid port: " port)
                         #false))))
             ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
                (lets
@@ -138,7 +138,7 @@
                            (< port 65536))
                      (tcp-client (list->vector bs) port)
                      (begin
-                        (show "Not a valid target: " str)
+                        (print "Not a valid target: " str)
                         #false))))
             (else
                (file-writer str))))

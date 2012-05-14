@@ -139,18 +139,18 @@
       ;;; Testing
       ;;;
 
-      (define (show rs op data)
+      (define (print rs op data)
          (lets ((rs out (op rs data)))
             (print* (list " - " data " → " out " using " op))))
 
       '(lets 
          ((rs (seed->rands (expt (time-ms) 3)))
           (data '(0 1 2 3 4 5 6 7 8 9 a b c d e f)))
-         (show rs list-repeat data)
-         (show rs list-del data)
-         (show rs list-dup data)
-         (show rs list-clone data)
-         (show rs list-perm data))
+         (print rs list-repeat data)
+         (print rs list-del data)
+         (print rs list-dup data)
+         (print rs list-clone data)
+         (print rs list-perm data))
 
 ))
 
