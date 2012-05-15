@@ -3,6 +3,8 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O3
 OFLAGS=-O1
+OL=owl-lisp/bin/ol
+
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
 everything: bin/radamsa .seal-of-quality
@@ -16,7 +18,8 @@ bin/radamsa.exe: radamsa.c
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
 radamsa.c: rad/*.scm
-	ol $(OFLAGS) -o radamsa.c rad/main.scm
+	make get-owl
+	$(OL) $(OFLAGS) -o radamsa.c rad/main.scm || echo "Compile faild, you might need to run 'make get-owl'"
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -37,7 +40,7 @@ get-owl:
 	# this may take a moment depending on your machine
 	-git clone http://haltp.org/git/owl-lisp.git
 	-cd owl-lisp && git pull 
-	cd owl-lisp && make && sudo make install
+	cd owl-lisp && make
 
 # standalone build for shipping
 standalone:
@@ -48,7 +51,7 @@ standalone:
 
 # a quick to compile vanilla bytecode executable
 bytecode:
-	ol -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
+	$(OL) -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 
