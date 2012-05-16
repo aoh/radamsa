@@ -45,7 +45,7 @@
                tl sas)))
 
       (define (try-choose rs nodes)
-         (lets/cc3 ret
+         (lets/cc ret
             ((rs nodes (random-permutation rs nodes)))
             (fold
                (λ (rs node)

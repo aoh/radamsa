@@ -615,7 +615,7 @@
 
       (define (sed-tree-op op name)
          (define (self rs ll meta)
-            (lets/cc5 ret
+            (lets/cc ret
                ((abort (λ () (ret self rs ll meta -1)))
                 (meta (inc meta name))
                 (lst (partial-parse (vector->list (car ll)) abort))
@@ -629,7 +629,7 @@
 
       ;; overwrite one node with one of the others
       (define (sed-tree-swap-one rs ll meta)
-         (lets/cc5 ret
+         (lets/cc ret
             ((abort (λ () (ret sed-tree-swap-one rs ll meta -1)))
              (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst))
@@ -650,7 +650,7 @@
 
       ;; pairwise swap of two nodes
       (define (sed-tree-swap-two rs ll meta)
-         (lets/cc5 ret
+         (lets/cc ret
             ((abort (λ () (ret sed-tree-swap-two rs ll meta -1)))
              (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst)))
@@ -696,7 +696,7 @@
                   (choose-stutr-nodes rs (cdr subs))))))
 
       (define (sed-tree-stutter rs ll meta)
-         (lets/cc5 ret
+         (lets/cc ret
             ((abort (λ () (ret sed-tree-stutter rs ll meta -1)))
              (lst (partial-parse (vector->list (car ll)) abort)) ;; (byte|node ...)
              (subs (sublists lst))
