@@ -29,6 +29,7 @@ install: bin/radamsa
 
 clean:
 	-rm radamsa.c bin/* .seal-of-quality
+	-cd owl-lisp && make clean
 
 .seal-of-quality: bin/radamsa
 	-mkdir -p tmp
