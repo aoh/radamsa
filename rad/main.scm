@@ -7,6 +7,7 @@
    (import
       (owl base)
       (owl args)
+      (owl sys)
       (rad generators)
       (rad output)
       (rad patterns)
@@ -69,6 +70,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   default "file,stdin=100")
               (metadata "-M" "--meta" has-arg
                   comment "save metadata about generated files to this file")
+              (recursive "-r" "--recursive"
+                  comment "include files in subdirectories")
               (list "-l" "--list" comment "list mutations, patterns and generators")
               (verbose "-v" "--verbose" comment "show progress during generation"))))
 
@@ -155,6 +158,29 @@ Radamsa was written by Aki Helin at OUSPG.")
             (λ (args) (print*-to stderr args))
             (λ (args) args)))
 
+      ;; paths → paths' | #false + error to stderr
+      (define (include-dirs paths)
+         ;; ".../" paths out → out' | #false
+         (define (walk prefix paths out)
+            (cond
+               ((null? paths) out)
+               ((not (car paths)) 
+                  (print-to stderr
+                     "Error reading sample files. Too long paths?")
+                  #false) ;; return nothing so radamsa wil exit 
+               (else 
+                  (lets
+                     ((this (string-append prefix (car paths))) ;; sans trailing slash
+                      (subs (dir->list this)))
+                     (if subs 
+                        ;; need to add the slash to current path
+                        (walk prefix (cdr paths)
+                           (walk (string-append this "/") subs out))
+                        ;; this is a complete path with prefix, if any
+                        (cons this out))))))
+         (walk "" paths null))
+
+
       ;; dict args → rval
       (define (start-radamsa dict paths)
          ;; show command line stuff
@@ -180,6 +206,11 @@ Radamsa was written by Aki Helin at OUSPG.")
             ((getf dict 'list)
                (show-options)
                0)
+            ((getf dict 'recursive)
+               (let ((paths (include-dirs paths)))
+                  (if paths ;; could fail due to overly long paths etc
+                     (start-radamsa (del dict 'recursive) paths)
+                     2)))
             (else
                (lets/cc ret
                   ((fail (λ (why) (print why) (ret 1)))

@@ -19,7 +19,7 @@ bin/radamsa.exe: radamsa.c
 
 radamsa.c: rad/*.scm
 	make get-owl
-	$(OL) $(OFLAGS) -o radamsa.c rad/main.scm || echo "Compile faild, you might need to run 'make get-owl'"
+	$(OL) $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -37,8 +37,8 @@ clean:
 	touch .seal-of-quality
 
 get-owl:
-	# need to install owl to be able to compile radamsa
-	# this may take a moment depending on your machine
+	# fetching and building owl to build radamsa
+	# this may take a few minutes on first build
 	-git clone http://haltp.org/git/owl-lisp.git
 	-cd owl-lisp && git pull 
 	cd owl-lisp && make
