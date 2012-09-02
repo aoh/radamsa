@@ -28,7 +28,7 @@ install: bin/radamsa
 	cat doc/radamsa.1 | gzip -9 > $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz
 
 clean:
-	-rm radamsa.c bin/* .seal-of-quality
+	-rm radamsa.c bin/radamsa .seal-of-quality
 	-cd owl-lisp && make clean
 
 .seal-of-quality: bin/radamsa
