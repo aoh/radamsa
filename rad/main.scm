@@ -177,9 +177,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                         (walk prefix (cdr paths)
                            (walk (string-append this "/") subs out))
                         ;; this is a complete path with prefix, if any
-                        (cons this out))))))
+                        (walk prefix (cdr paths) (cons this out)))))))
          (walk "" paths null))
-
 
       ;; dict args → rval
       (define (start-radamsa dict paths)
