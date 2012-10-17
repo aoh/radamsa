@@ -64,7 +64,7 @@
             (λ (rs)
                ;; note: independent of rs. could in offline case read big chunks and resplit each.
                ;; not doing now because online case is 99.9% of stdin uses
-               (values rs ll (put #false 'generator 'stdin)))))
+               (values rs ll (put empty 'generator 'stdin)))))
 
       (define (random-block rs n out)
          (if (eq? n 0)
@@ -86,7 +86,7 @@
          (lets ((rs seed (rand rs 1111111111111111111111111111111111111)))
             (values rs 
                (random-stream (seed->rands seed))
-               (put #false 'generator 'random))))
+               (put empty 'generator 'random))))
 
       ;; paths → (rs → rs' ll|#false meta|error-str)
       (define (file-streamer paths)
