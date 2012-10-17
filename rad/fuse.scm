@@ -29,7 +29,7 @@
                   subs
                   (put subs (car suf)
                      (cons (cdr suf) (get subs (car suf) null)))))
-            #false sufs))
+            empty sufs))
 
       ;; node = ((suffix ...) . (suffix ...))
       (define (split node tl)

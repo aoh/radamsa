@@ -226,7 +226,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                      (generator-priorities->generator rs
                         (getf dict 'generators) paths fail (getf dict 'count))))
                   ;; possibly save the seed to metadata
-                  (record-meta (put #false 'seed (getf dict 'seed)))
+                  (record-meta (put empty 'seed (getf dict 'seed)))
                   (let loop 
                      ((rs rs)
                       (muta muta)
