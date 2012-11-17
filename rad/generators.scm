@@ -6,6 +6,7 @@
 
    (import
       (owl base)
+      (owl sys)
       (rad shared)
       (only (owl primop) halt))
 
@@ -95,7 +96,7 @@
              (n (vec-len paths)))
             (define (gen rs)
                ;; todo: approximates failing after trying a random permutation of paths
-               (let loop ((rs rs) (tries 0))
+               (let loop ((rs rs) (tries 0)) ;; no longer loops, can remove
                   (if (= tries 100)
                      (values rs #false "Cannot read")
                      (lets
@@ -107,8 +108,10 @@
                               (values rs ll 
                                  (list->ff (list '(generator . file) (cons 'source path)))))
                            (begin   
-                              (print*-to stderr (list "Warning: failed to open given sample path " path))
-                              (loop rs (+ tries 1))))))))
+                              (if (dir->list path)
+                                 (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
+                                 (print*-to stderr (list "Error: failed to open '" path "'")))
+                              (halt exit-read-error)))))))
             gen))
 
       (define (string->generator-priorities str)

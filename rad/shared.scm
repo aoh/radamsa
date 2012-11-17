@@ -18,6 +18,9 @@
       car>
       length<
       stderr-probe
+
+      exit-write-error
+      exit-read-error
       )
 
    (begin
@@ -80,6 +83,8 @@
             (if (< n this)
                (cdar l)
                (choose-pri (cdr l) (- n this)))))
-      
+
+      (define exit-write-error 1)
+      (define exit-read-error 2)
 ))
 

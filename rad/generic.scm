@@ -2,6 +2,14 @@
 ;;; Simple Generic Linear Mutations 
 ;;;
 
+;; todo: stateful generic mutations
+;;   mutator rs state arg ... → rs' state'
+;;     automatic fold0-style behavior for state-dependent ones for first use
+;;     state preservation strategies:
+;;       - reservoir sampling -style
+;;       - last state
+;;       - always grow or probabilistic A + B?
+
 (define-library (rad generic)
 
    (import
@@ -47,11 +55,6 @@
                    (rs n (rand rs (- len start))) ;; <- could take min with rand-len
                    (hd tl (split l start)))
                   (values rs (append hd (drop tl n)))))))
-
-      '(lets
-         ((rs (fold (λ (rs n) (lets ((rs x (rand rs 124124214124124214))) rs)) (seed->rands (time-ms)) (iota 0 1 1000)))
-          (a b (list-del-seq (seed->rands (expt (time-ms) 3)) '(1 2 3 4 5 6 7 8 9))))
-         (print b))
 
       ;; duplicate a random element
       (define (list-dup rs l)
@@ -142,15 +145,6 @@
       (define (print rs op data)
          (lets ((rs out (op rs data)))
             (print* (list " - " data " → " out " using " op))))
-
-      '(lets 
-         ((rs (seed->rands (expt (time-ms) 3)))
-          (data '(0 1 2 3 4 5 6 7 8 9 a b c d e f)))
-         (print rs list-repeat data)
-         (print rs list-del data)
-         (print rs list-dup data)
-         (print rs list-clone data)
-         (print rs list-perm data))
 
 ))
 

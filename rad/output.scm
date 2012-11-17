@@ -41,15 +41,22 @@
                            (cond
                               ((null? tl)
                                  (cons char tl))
-                              ((eq? char #\%)
+                              ((and (eq? char #\%) (pair? tl))
                                  (case (car tl)
                                     ((#\n) (render (get meta 'nth 0) (cdr tl)))
-                                    (else (error "Unknown pattern in output path: " (list->string (cons char tl))))))
+                                    (else 
+                                       (print*-to stderr
+                                          (list "Warning: unknown pattern in output path: '" 
+                                             (list->string (list char (car tl)))
+                                             "'. Did you mean '%n'?"))
+                                       (cons char tl))))
                               (else (cons char tl))))
                         null pat)))
                 (port (open-output-file path)))
                (if (not port)
-                  (print*-to stderr (list "Warning: cannot write to '" path "'")))
+                  (begin
+                     (print*-to stderr (list "Error: cannot write to '" path "'"))
+                     (halt exit-write-error)))
                (values gen port (put (put meta 'output 'file-writer) 'path path))))
          gen)
 
