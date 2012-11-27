@@ -49,7 +49,9 @@
                         null pat)))
                 (port (open-output-file path)))
                (if (not port)
-                  (print*-to stderr (list "Warning: cannot write to '" path "'")))
+                  (begin
+                     (print*-to stderr (list "Error: cannot write to '" path "'"))
+                     (halt 1)))
                (values gen port (put (put meta 'output 'file-writer) 'path path))))
          gen)
 
