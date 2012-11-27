@@ -2,6 +2,9 @@
 ;;; Stream Mutations
 ;;;
 
+;; todo: convert generics to new stateful generics (after added)
+;; todo: guessed lexical level or guessed separator stream → stateful generic
+
 (define-library (rad mutations)
 
    (import 
