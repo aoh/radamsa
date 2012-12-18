@@ -117,7 +117,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                (λ (out key val)
                   (render key
                      (ilist #\: #\space
-                        ((if (string? val) serialize render)
+                        ((if (string? val) (make-serializer #empty) render)
                            val
                            (if (null? out)
                               '(#\newline)
