@@ -316,10 +316,10 @@
       (define (split lst)
          (define (walk t h out)
             (if (null? h)
-               (values (reverse out) t)
+               (values (╯°□°╯ out) t)
                (let ((h (cdr h)))
                   (if (null? h)
-                     (values (reverse out) t)
+                     (values (╯°□°╯ out) t)
                      (walk (cdr t) (cdr h) (cons (car t) out))))))
          (walk lst lst null))
 
@@ -405,11 +405,11 @@
          (let loop ((lst (vector->list bvec)) (buff null) (out null))
             (if (null? lst)
                (if (null? buff)
-                  (reverse out)
-                  (reverse (cons (reverse buff) out)))
+                  (╯°□°╯ out)
+                  (╯°□°╯ (cons (╯°□°╯ buff) out)))
                (lets ((hd lst lst))
                   (if (eq? hd 10) ;; newline
-                     (loop lst null (cons (reverse (cons 10 buff)) out))
+                     (loop lst null (cons (╯°□°╯ (cons 10 buff)) out))
                      (loop lst (cons hd buff) out))))))
 
       ;; #u8[byte ...] → ((byte ... 10) ...) | #false, if this doesn't look like line-based text data
@@ -523,12 +523,12 @@
       ;; → lst tail-lst = did successfully parse up to close. ready node is lst, tail is following data
       (define (grow lst close rout)
          (if (null? lst)
-            (values (reverse rout) #false) ;; out of data, didn't find close. return partial parse.
+            (values (╯°□°╯ rout) #false) ;; out of data, didn't find close. return partial parse.
             (lets ((hd lst lst))
                (cond
                   ((eq? hd close)
                      ;; match complete, return with rest of list
-                     (values (reverse (cons close rout)) lst))
+                     (values (╯°□°╯ (cons close rout)) lst))
                   ((get usual-delims hd #false) =>
                      (λ (next-close)
                         (lets ((this lst (grow lst next-close null)))
@@ -536,7 +536,7 @@
                               (grow lst close (cons (cons hd this) rout))
                               ;; we ran out of data. this is a list of partial parses (having the data of
                               ;; lst after hd in some form) which we want to preserve as tail
-                              (values (append (reverse rout) (cons hd this)) #false)))))
+                              (values (append (╯°□°╯ rout) (cons hd this)) #false)))))
                   (else ;; add one byte to this node
                      (grow lst close (cons hd rout)))))))
 
@@ -598,7 +598,7 @@
             (abort)
             (let loop ((lst lst) (rout null))
                (if (null? lst)
-                  (reverse rout)
+                  (╯°□°╯ rout)
                   (lets ((closep (get usual-delims (car lst) #false)))
                      (if closep
                         (lets
@@ -606,7 +606,7 @@
                             (this lst (grow (cdr lst) closep null)))
                            (if lst
                               (loop lst (cons (cons hd this) rout))
-                              (append (reverse rout) (cons hd this))))
+                              (append (╯°□°╯ rout) (cons hd this))))
                         (loop (cdr lst) (cons (car lst) rout))))))))
 
       (define (flatten node tl)

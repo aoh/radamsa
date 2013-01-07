@@ -31,6 +31,17 @@
          (values stdout-stream stdout 
             (put meta 'output 'stdout)))
 
+      (define (get-natural ll)
+         (let loop ((ll ll) (n 0))
+            (lets ((x ll (uncons ll #false)))
+               (cond
+                  ((not x) ;; no more anything, 0 is accepted as n
+                     (values ll n))
+                  ((and (<= #\0 x ) (<= x #\9))
+                     (loop ll (+ (* n 10) (- x #\0))))
+                  (else ;; no more numbers
+                     (values (cons x ll) n))))))
+
       (define (file-writer pat)
          (define (gen meta)
             (lets 
@@ -44,6 +55,23 @@
                               ((and (eq? char #\%) (pair? tl))
                                  (case (car tl)
                                     ((#\n) (render (get meta 'nth 0) (cdr tl)))
+                                    ((#\0) ;; %0[0-9]+n -> testcase number with padding
+                                       (lets
+                                          ((tlp pad (get-natural tl))
+                                           (np tlp (uncons tlp #false))) ;; trailing required n
+                                          (if (and pad (equal? np #\n))
+                                             (lets
+                                                ((digits (render (get meta 'nth 0) null))
+                                                 (padding 
+                                                   (map (λ (x) #\0)
+                                                      (iota 0 1 (- pad (length digits))))))
+                                                (append padding
+                                                   (append digits tlp)))
+                                             (begin
+                                                ;; print warning to stderr becase one likely accidentally %04d or %4n, etc
+                                                (print*-to stderr
+                                                   (list "Warning: testcase padding should be %0[0-9]+n"))
+                                                (cons char tl)))))
                                     (else 
                                        (print*-to stderr
                                           (list "Warning: unknown pattern in output path: '" 
