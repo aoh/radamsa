@@ -55,7 +55,7 @@ Radamsa was written by Aki Helin at OUSPG.")
               (about "-a" "--about" comment "what is this thing?")
               (version "-V" "--version" comment "show program version")
               (output "-o" "--output" has-arg default "-" cook ,string->outputs
-                  comment "specify where to put the generated data")
+                  comment "file name pattern for outputs, e.g. output/fuzz-%n.foo")
               (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate (number or inf)")
               (seed "-s" "--seed" cook ,string->natural comment "random seed (number, default random)")
