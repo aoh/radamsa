@@ -1,8 +1,3 @@
-
-;;;
-;;; Shared Parameters and Functions
-;;;
-
 ;;;
 ;;; Mutation patterns
 ;;;

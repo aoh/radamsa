@@ -12,7 +12,14 @@ fail() {
 for file in tests/*.sh
 do 
    echo -n " o $file: "
-   $file $@ || { echo "ERROR"; fail "test $file fails"; }
+   EXIT=0
+   for try in $(seq 40);
+   do
+      $file $@
+      EXIT=$?
+      test $EXIT -eq 0 && break;
+   done
+   test $EXIT -eq 0 || { echo "ERROR"; fail "test $file fails"; }
    echo "ok"
 done
 

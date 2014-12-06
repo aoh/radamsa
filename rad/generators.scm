@@ -19,7 +19,7 @@
 
       (define (rand-block-size rs)
          (lets ((rs n (rand rs max-block-size)))
-            (values rs (max n 4))))
+            (values rs (max n min-block-size))))
 
       ;; bvec|F bvec → bvec
       (define (merge head tail)
@@ -27,17 +27,30 @@
             (list->vector (vec-foldr cons (vec-foldr cons null tail) head))
             tail))
 
+      (define (finish rs len)
+         (lets ((rs n (rand rs (+ len 1)))) ;; 1/(n+1) probability of possibly adding extra data
+            (if (eq? n 0)
+               (lets
+                  ((rs bits (rand-range rs 1 16))
+                   (rs len (rand rs (<< 1 bits)))
+                   (rs bytes (random-numbers rs 256 len)))
+                  (list (list->byte-vector bytes)))
+               null)))
+
+      ;; store length so that extra data can be generated in case of no or very 
+      ;; little sample data, which would cause one or very few possible outputs
+
       (define (stream-port rs port)
          (lets ((rs first (rand-block-size rs)))
-            (let loop ((rs rs) (last #false) (wanted first)) ;; 0 = block ready (if any)
+            (let loop ((rs rs) (last #false) (wanted first) (len 0)) ;; 0 = block ready (if any)
                (let ((block (get-block port wanted)))
                   (cond
                      ((eof? block) ;; end of stream
-                        ;(if (not (eq? port stdin)) (close-port port))
                         (if (not (eq? port stdin)) (fclose port))
-                        (if last (list last) null))
-                     ((not block) ;; read error
-                        ;(if (not (eq? port stdin)) (close-port port))
+                        (if last
+                           (cons last (finish rs (+ len (sizeb last))))
+                           (finish rs len)))
+                     ((not block) ;; read error, could be treated as error
                         (if (not (eq? port stdin)) (fclose port))
                         (if last (list last) null))
                      ((eq? (sizeb block) wanted)
@@ -45,10 +58,11 @@
                         (lets
                            ((block (merge last block))
                             (rs next (rand-block-size rs)))
-                           (pair block (loop rs #false next))))
+                           (pair block (loop rs #false next (+ len (sizeb block))))))
                      (else
                         (loop rs (merge last block)
-                           (- wanted (sizeb block)))))))))
+                           (- wanted (sizeb block))
+                           len)))))))
 
       ;; rs port → rs' (bvec ...), closes port unless stdin
       (define (port->stream rs port)
@@ -95,23 +109,19 @@
             ((paths (list->vector paths))
              (n (vec-len paths)))
             (define (gen rs)
-               ;; todo: approximates failing after trying a random permutation of paths
-               (let loop ((rs rs) (tries 0)) ;; no longer loops, can remove
-                  (if (= tries 100)
-                     (values rs #false "Cannot read")
-                     (lets
-                        ((rs n (rand rs n))
-                         (path (vec-ref paths n))
-                         (port (open-input-file path)))
-                        (if port
-                           (lets ((rs ll (port->stream rs port)))
-                              (values rs ll 
-                                 (list->ff (list '(generator . file) (cons 'source path)))))
-                           (begin   
-                              (if (dir->list path)
-                                 (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
-                                 (print*-to stderr (list "Error: failed to open '" path "'")))
-                              (halt exit-read-error)))))))
+               (lets
+                  ((rs n (rand rs n))
+                   (path (vec-ref paths n))
+                   (port (open-input-file path)))
+                  (if port
+                     (lets ((rs ll (port->stream rs port)))
+                        (values rs ll 
+                           (list->ff (list '(generator . file) (cons 'source path)))))
+                     (begin   
+                        (if (dir->list path)
+                           (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
+                           (print*-to stderr (list "Error: failed to open '" path "'")))
+                        (halt exit-read-error)))))
             gen))
 
       (define (string->generator-priorities str)

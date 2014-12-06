@@ -30,15 +30,15 @@
                      #false)))
             (else #f)))
 
-      (define version-str "Radamsa 0.3.1a") ;; aka funny fold
+      (define version-str "Radamsa 0.4a") ;; aka lazy list
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
       (define about-text 
 
-"Radamsa is a general purpose fuzzer. It is intended to be used for
-breaking valid sample files in ways that might expose errors in programs
-processing them. For more information read the fine manual page or
+"Radamsa is a general purpose fuzzer. It modifies given sample data 
+in ways, which might expose errors in programs intended to process 
+the data. For more information, read the fine manual page, or visit
 visit http://code.google.com/p/ouspg/
 
 Radamsa was written by Aki Helin at OUSPG.")
@@ -54,8 +54,8 @@ Radamsa was written by Aki Helin at OUSPG.")
             `((help "-h" "--help" comment "show this thing")
               (about "-a" "--about" comment "what is this thing?")
               (version "-V" "--version" comment "show program version")
-              (output "-o" "--output" has-arg default "-" cook ,string->outputs
-                  comment "file name pattern for outputs, e.g. output/fuzz-%n.foo")
+              (output-pattern "-o" "--output" has-arg default "-" cook ,(λ (x) x)
+                  comment "output pattern, e.g. /tmp/fuzz-%n.foo, -, :80 or 127.0.0.1:80")
               (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate (number or inf)")
               (seed "-s" "--seed" cook ,string->natural comment "random seed (number, default random)")
@@ -67,7 +67,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                   default ,default-patterns)
               (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
                   comment "which data generators to use"
-                  default "file,stdin=100")
+                  default "random,file=1000,stdin=100000")
               (metadata "-M" "--meta" has-arg
                   comment "save metadata about generated files to this file")
               (recursive "-r" "--recursive"
@@ -195,6 +195,11 @@ Radamsa was written by Aki Helin at OUSPG.")
             ((getf dict 'version)
                (print version-str)
                0)
+            ((not (getf dict 'output))
+               (let ((os (string->outputs (getf dict 'output-pattern) (getf dict 'count))))
+                  (if os
+                     (start-radamsa (put dict 'output os) paths)
+                     1)))
             ((getf dict 'help)
                (print usage-text)
                (print-rules command-line-rules)

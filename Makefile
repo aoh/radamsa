@@ -1,8 +1,8 @@
 DESTDIR=
 PREFIX=/usr
 BINDIR=/bin
-CFLAGS=-Wall -O3
-OFLAGS=-O1
+CFLAGS=-Wall -O2
+OFLAGS=-O2
 OL=owl-lisp/bin/ol
 
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
@@ -12,6 +12,14 @@ everything: bin/radamsa .seal-of-quality
 bin/radamsa: radamsa.c
 	mkdir -p bin
 	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
+
+fasl: radamsa.fasl
+	echo "#!/usr/bin/owl-vm" > fasl
+	cat radamsa.fasl >> fasl
+	chmod +x fasl
+
+radamsa.fasl: rad/*.scm
+	$(OL) -o radamsa.fasl rad/main.scm
 
 bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
@@ -39,9 +47,12 @@ clean:
 get-owl:
 	# fetching and building owl to build radamsa
 	# this may take a few minutes on first build
-	-git clone http://haltp.org/git/owl-lisp.git
+	-git clone https://github.com/aoh/owl-lisp.git
 	-cd owl-lisp && git pull 
 	cd owl-lisp && make
+
+todo:
+	grep -n "^ *;;* *todo:" rad/* | sed -e 's/: *;;* *todo:/ →/'
 
 # standalone build for shipping
 standalone:

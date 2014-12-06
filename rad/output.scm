@@ -11,7 +11,7 @@
 
    (export
       output
-      string->outputs)
+      string->outputs)    ;; str num → ll of output functions | #false
 
    (begin
 
@@ -64,9 +64,10 @@
                                                 ((digits (render (get meta 'nth 0) null))
                                                  (padding 
                                                    (map (λ (x) #\0)
-                                                      (iota 0 1 (- pad (length digits))))))
-                                                (append padding
-                                                   (append digits tlp)))
+                                                      (iota 0 1 (- pad (length digits)))))
+                                                 (chars (append padding digits))
+                                                 (chars (drop chars (- (length chars) pad))))
+                                                (append chars tlp))
                                              (begin
                                                 ;; print warning to stderr becase one likely accidentally %04d or %4n, etc
                                                 (print*-to stderr
@@ -144,8 +145,8 @@
                   fd
                   (put (put meta 'output 'tcp-server) 'ip (ip->string ip))))))
 
-      ;; args → (out :: → out' fd meta) v null | #false
-      (define (string->outputs str)
+      ;; o n → (out :: → out' fd meta) v null | #false, where os is string from -o, and n is number from -n
+      (define (string->outputs str n)
          (cond
             ((equal? str "-") ;; conventional way to ask for standard output (and input)
                stdout-stream)
@@ -159,7 +160,7 @@
                               (print "Couldn't bind to local port " port)
                               #false)))
                      (begin   
-                        (print "Invalid port: " port)
+                        (print-to stderr "Invalid port: " port)
                         #false))))
             ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
                (lets
@@ -173,8 +174,11 @@
                            (< port 65536))
                      (tcp-client (list->vector bs) port)
                      (begin
-                        (print "Not a valid target: " str)
+                        (print-to stderr "Not a valid target: " str)
                         #false))))
+            ((and (> n 1) (not (m/%(0[1-9][0-9]*)?n/ str)))
+               (print-to stderr "Refusing to overwrite file '" str "' many times. You should add %n or %0[padding]n to the path.")
+               #false)
             (else
                (file-writer str))))
 ))

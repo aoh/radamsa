@@ -11,6 +11,10 @@
 
    (begin
 
+      (define search-fuel 100000)
+
+      (define search-stop-ip 8)
+
       (define (jump lst from to)
          (if (eq? lst from)
             to
@@ -31,8 +35,21 @@
                      (cons (cdr suf) (get subs (car suf) null)))))
             empty sufs))
 
+      (define (any-position-pair rs nodes)
+         (lets 
+            ((rs node (rand-elem rs nodes))
+             (froms tos node)
+             (rs from (rand-elem rs froms))
+             (rs to (rand-elem rs tos)))
+            (values rs from to)))
+
+
+      ;;            .------------------------> source list suffixes after a shared prefix
+      ;;            |               .--------> target -||-
+      ;;            |               v
+      ;;            v
       ;; node = ((suffix ...) . (suffix ...))
-      (define (split node tl)
+      (define (split tl node)
          (lets
             ((sas (char-suffixes (car node)))
              (sbs (char-suffixes (cdr node))))
@@ -41,72 +58,29 @@
                   (let ((bs (getf sbs char)))
                      (if bs ;; there were some also in b
                         (cons (cons sufs bs) tl)
-                        tl))) ;; nothing shared
+                        tl))) ;; nothing shared after char
                tl sas)))
 
-      (define (try-choose rs nodes)
-         (lets/cc ret
-            ((rs nodes (random-permutation rs nodes)))
-            (fold
-               (λ (rs node)
-                  (lets 
-                     ((rs as (random-permutation rs (car node)))
-                      (rs bs (random-permutation rs (cdr node))))
-                     (let loop ((as as) (bs bs))
-                        (cond
-                           ((null? as) rs)
-                           ((null? bs) rs)
-                           ((equal? (car as) (car bs)) rs) ;; don't jump to the same place
-                           (else
-                              ;; return via cont
-                              (ret rs (car as) (car bs)))))))
-               rs nodes)
-            ;; if nothig found
-            (values rs #false #false)))
-
-      ;; walk in parallel all shared strings of given length
-      ; rs nodes prob → rs' a|#f b|#f
-      (define (try-pair rs nodes prob)
-         (if (null? nodes)
-            (values rs #false #false)
-            (lets ((rs n (rand rs prob)))
-               (if (eq? n 0)
-                  (try-choose rs nodes)                   ;; choose a pair out of current nodes
-                  (lets
-                     ((subs (foldr split null nodes))
-                      (rs a b (try-pair rs subs prob)))
-                     (if a 
-                        (values rs a b)
-                        (try-choose rs nodes)))))))      ;; nothing shared below, try here
-     
-      (define (find-pair rs a b)
-         (let ((nodes (list (cons (suffixes a) (suffixes b)))))
-            (let loop ((rs rs) (prob 8))
-               (lets ((rs a b (try-pair rs nodes prob)))
-                  (cond
-                     (a (values rs a b))
-                     ((= prob 1) ;; escape 
-                        (values rs (caaar nodes) (cadar nodes)))
-                     (else
-                        (loop rs (>> prob 1)))))))) ;; always terminates immediately if 1
+      (define (find-jump-points rs a b)
+         (lets
+            ((al (suffixes a))
+             (bl (suffixes b))
+             (nodes (list (cons al bl))))
+            (let loop ((rs rs) (nodes nodes) (fuel search-fuel))
+               (if (< search-fuel 0)
+                  (any-position-pair rs nodes)
+                  (lets ((rs x (rand rs search-stop-ip)))
+                     (if (eq? x 0)
+                        (any-position-pair rs nodes)
+                        (let ((nodesp (fold split null nodes)))
+                           (if (null? nodesp)
+                              (any-position-pair rs nodes)
+                              (loop rs nodesp (- fuel (length nodesp)))))))))))
 
       (define (fuse rs al bl)
          (cond
             ((null? al) (values rs bl))
             ((null? bl) (values rs al))
             (else
-               (lets ((rs a b (find-pair rs al bl)))
-                  (values rs (jump al a b))))))
-
-      #|(let loop ((rs (seed->rands (time-ms))))
-         (lets
-            ((rs al (rand rs 10))
-             (rs bl (rand rs 10))
-             (rs a (random-numbers rs 4 al))
-             (rs b (random-numbers rs 4 bl))
-             (_ (print (list a '+ b)))
-             (rs x (fuse rs a b))
-             (_ (print (list a '+ b '= x))))
-            (loop rs)))|#
-
-))
+               (lets ((rs a b (find-jump-points rs al bl)))
+                  (values rs (jump al a b))))))))

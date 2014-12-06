@@ -2,14 +2,6 @@
 ;;; Simple Generic Linear Mutations 
 ;;;
 
-;; todo: stateful generic mutations
-;;   mutator rs state arg ... → rs' state'
-;;     automatic fold0-style behavior for state-dependent ones for first use
-;;     state preservation strategies:
-;;       - reservoir sampling -style
-;;       - last state
-;;       - always grow or probabilistic A + B?
-
 (define-library (rad generic)
 
    (import
@@ -25,6 +17,9 @@
       list-swap     ;; etc
       list-perm     ;
       list-fuse
+
+      st-list-ins     ;; rs st l → rs' st' l'
+      st-list-replace ;; rs st l → rs' st' l'
    )
 
    (begin
@@ -137,6 +132,54 @@
       ;; connect prefix of al somewhere to bl, and make sure that (list-fuse l l) != l
       (define list-fuse fuse)
 
+      ;; mutations which keep some old elements for mutations in (n-elems elem-1 elem2 ...)
+      (define stored-elems 10)
+      (define update-prob (<< stored-elems 1))
+
+      (define (step-state rs st l len)
+         (if (< (car st) stored-elems)
+            ;; add elements until there are enough stored elements
+            (lets ((rs p (rand rs len)))
+               (step-state rs 
+                  (ilist (+ 1 (car st)) 
+                         (lref l p)
+                         (cdr st))
+                  l len))
+            (lets 
+               ((rs up (rand rs update-prob)))
+               (if (< up stored-elems)
+                  ;; update a stored element
+                  (lets
+                     ((rs ep (rand rs len))
+                      (new (lref l ep))
+                      (st (edit st (+ 1 up) (λ (tl) (cons (lref l ep) (cdr tl)))))) ; +1 for len
+                     (values rs st))
+                  (values rs st)))))
+
+      (define (pick-state rs st)
+         (lets ((rs p (rand rs (car st))))
+            (values rs (lref (cdr st) p))))
+
+      (define (st-list-ins rs st l)
+         (lets
+            ((n (length l))
+             (rs st (step-state rs st l n))
+             (rs x (pick-state rs st))
+             (rs p (rand rs n))
+             (lp (edit l p (λ (tl) (cons x tl)))))
+            (values rs st lp)))
+      
+      (define (st-list-replace rs st l)
+         (lets
+            ((n (length l))
+             (rs st (step-state rs st l n))
+             (rs x (pick-state rs st))
+             (rs p (rand rs n))
+             (lp (edit l p (λ (tl) (cons x (cdr tl))))))
+            (values rs st lp)))
+
+      ;; st-list-swap st-list-ins 
+      ;; 
 
       ;;;
       ;;; Testing

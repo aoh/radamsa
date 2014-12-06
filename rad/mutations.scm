@@ -11,6 +11,7 @@
       (owl base)
       (rad generic)   ;; shared list mutations
       (rad split)     ;; heuristic splitting
+      (rad xp)        ;; xmlish parsing and mutations
       (rad shared))
 
    (export 
@@ -56,24 +57,6 @@
                   (if (eq? 0 (fxband 128 (car lst)))
                      (loop (cdr lst) (+ p 1))
                      (stderr-probe "BINARY: YES" #true))))))
-
-      ;; val++ in ff, or insert 1
-      (define (inc ff key)
-         (let ((val (getf ff key)))
-            (if val
-               (fupd ff key (+ val 1))
-               (put ff key 1))))
-
-      ;; (byte ...) bvec-ll → (bvec .. . bvec-ll)
-      (define (flush-bvecs byte-list tail)
-         (let loop ((len (length byte-list)) (lst byte-list))
-            (if (< len avg-block-size)
-                (cons (list->byte-vector lst) tail)
-                (let
-                  ((hd (take lst avg-block-size))
-                   (tl (drop lst avg-block-size)))
-                  (cons (list->byte-vector hd)
-                     (loop (- len avg-block-size) tl))))))
 
       ;; clone a byte vector to a list and edit at given position (using primops since this is heavily used)
       (define (edit-byte-vector bvec edit-pos fn)
@@ -124,37 +107,6 @@
          (if (eq? pos end)
             tail
             (cons (car pos) (copy-range (cdr pos) end tail))))
-
-      (define interesting-numbers 
-         (list->vector 
-            (fold 
-               (λ (o x) 
-                  (let ((x (<< 1 x)))
-                     (ilist (- x 1) x (+ x 1) o)))
-               null
-               '(1 7 8 15 16 31 32 63 64 127 128))))
-
-      ;; fixme: simple placeholder
-      (define (mutate-num rs num)
-         (lets ((rs n (rand rs 12)))
-            (cond
-               ((eq? n 0)  (values rs (+ n 1)))
-               ((eq? n 1)  (values rs (- n 1)))
-               ((eq? n 2)  (values rs 0)) ;; todo, pack funny nums to a list and reduce opts
-               ((eq? n 3)  (values rs 1))
-               ((eq? n 4)  (rand-elem rs interesting-numbers))
-               ((eq? n 5)  (rand-elem rs interesting-numbers))
-               ((eq? n 6)  (rand-elem rs interesting-numbers))
-               ((eq? n 7)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (+ num x))))
-               ((eq? n 8)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (- x num))))
-               ((eq? n 9)  (lets ((rs m (rand rs (* n 2)))) (values rs (- n m))))
-               (else  
-                  (lets
-                     ((rs n (rand-range rs 1 129))
-                      (rs n (rand-log rs n))
-                      (rs s (rand rs 3))) ;; add more likely 
-                     (values rs
-                        ((if (eq? s 0) - +) num n)))))))
 
       (define (mutate-a-num rs lst nfound)
          (if (null? lst)
@@ -345,9 +297,12 @@
                    (ol1 ol2 (halve (vector->list block)))
                    (rs a (list-fuse rs al1 ol1)) ; a -> o
                    (rs b (list-fuse rs ol2 al2)) ; o -> a
+                   (rs swap? (rand rs 3)) ;; more likely to keep
                    (rs d (rand-delta-up rs)))
-                  (values (remember (car ll)) rs 
-                     (flush-bvecs a (flush-bvecs b ll)) ;; <- on avg 1x, max 2x block sizes
+                  (values 
+                     (remember (if (eq? swap? 0) (car ll) block))
+                     rs 
+                     (flush-bvecs a (flush-bvecs b (cdr ll))) ;; <- on avg 1x, max 2x block sizes
                      (inc meta 'fuse-old)
                      d))))
          ((remember (car ll)) rs ll meta))
@@ -436,6 +391,17 @@
                   (values self rs ll meta -1))))
          self)
 
+      (define (stateful-line-op op name initial-state)
+         (let loop ((st initial-state))
+            (λ (rs ll meta)
+               (let ((ls (try-lines (car ll))))
+                  (if ls
+                     (lets ((rs stp ls (op rs st ls)))
+                        (values (loop stp) rs 
+                           (flush-bvecs (unlines ls) (cdr ll))
+                           (inc meta name) 1))
+                     (values (loop st) rs ll meta -1))))))
+
       (define sed-line-del (line-op list-del 'line-del))
       (define sed-line-del-seq (line-op list-del-seq 'line-del-seq))
       (define sed-line-dup (line-op list-dup 'line-dup))
@@ -443,6 +409,10 @@
       (define sed-line-repeat (line-op list-repeat 'line-repeat))
       (define sed-line-swap (line-op list-swap 'line-swap))
       (define sed-line-perm (line-op list-perm 'line-perm))
+
+      ;; state is (n <line> ...)
+      (define sed-line-ins (stateful-line-op st-list-ins 'list-ins (cons 0 null)))
+      (define sed-line-replace (stateful-line-op st-list-replace 'list-replace (cons 0 null)))
 
 
       ;;;
@@ -717,13 +687,304 @@
                      +1))
                (values sed-tree-stutter rs ll meta -1))))
 
+
+
+      ;;;
+      ;;; ASCII string mutations (use UTF-8 later)
+      ;;;
+
+      (define (delimiter-of byte)
+         (cond
+            ((eq? byte #\') #\')
+            ((eq? byte #\") #\")
+            (else #false)))
+
+      (define (texty? byte)
+         (cond 
+            ((< byte 9) #false)
+            ((> byte 126) #false)
+            ((> byte 31) #true)
+            ((eq? byte 9) #true)
+            ((eq? byte 10) #true)
+            ((eq? byte 13) #true)
+            (else #false)))
+
+      ;; minimum texty bytes in sequence to be considered interesting
+      ;; note - likely to happen in longish data (a few kb) anyway
+      (define min-texty 6)
+
+      (define (texty-enough? lst)
+         (let loop ((lst lst) (n min-texty))
+            (cond
+               ((null? lst) #true) ;; match short textual input, accidentally also short trailing ones
+               ((eq? n 0) #true)
+               ((texty? (car lst)) 
+                  (loop (cdr lst) (- n 1)))
+               (else #false))))
+
+      (define (flush type bytes chunks)
+         (cons (cons type (reverse bytes)) chunks))
+
+      ;; (byte ..) → (node ...)
+      ;;  node = #(byte bytes...) | #(text bytes) | #(delimited byte (byte ...) byte)
+      (define (string-lex lst)
+         ;; reading text, seen a delimiter
+         ;; f o o = " 9 0 0 1
+         ;; prevr---' '--- afterr
+         ;;         '-> start = ", end = "
+         (define (step-delimited lst start end afterr prevr chunks)
+            (if (null? lst)
+               (reverse (flush 'text (append afterr prevr) chunks))
+               (let ((this (car lst)))
+                  (cond
+                     ;; finish text chunk
+                     ((eq? this end)
+                        (lets
+                           ((prevr (cdr prevr)) ;; drop the start symbol 
+                            (node (tuple 'delimited start (reverse afterr) end)))
+                           (if (null? prevr)
+                              (step (cdr lst) null (cons node chunks))
+                              (step (cdr lst) null (ilist node (tuple 'text (reverse prevr)) chunks)))))
+                     ;; skip byte after quotation, if it seems texty
+                     ((eq? this #\\)
+                        (cond
+                           ((null? (cdr lst))
+                              (step-delimited (cdr lst) start end 
+                                 (cons #\\ afterr) prevr chunks))
+                           ((texty? (cadr lst))
+                              (step-delimited (cddr lst) start end 
+                                 (ilist (cadr lst) #\\ afterr) prevr chunks))
+                           (else
+                              (step-delimited (cdr lst) start end (cons (car lst) afterr) prevr chunks))))
+                     ((texty? this)
+                        (step-delimited (cdr lst) start end (cons (car lst) afterr) prevr chunks))
+                     ;; abort this delimited chink, finish as plain text node
+                     (else
+                        (step lst null
+                           (flush 'text (append afterr prevr) chunks)))))))
+         
+         (define (step-text lst seenr chunks)
+            (cond
+               ((null? lst)
+                  (reverse (flush 'text seenr chunks)))
+               ((delimiter-of (car lst)) =>
+                  (λ (end)
+                     (step-delimited (cdr lst) (car lst) end null 
+                        (cons (car lst) seenr) chunks)))
+               ((texty? (car lst))
+                  (step-text (cdr lst) (cons (car lst) seenr) chunks))
+               (else
+                  ;; min length checked at seen
+                  (step lst null (flush 'text seenr chunks)))))
+
+         (define (step lst rawr chunks)
+            (cond
+               ((null? lst)
+                  (if (null? rawr)
+                     (reverse chunks)
+                     (reverse (flush 'byte rawr chunks))))
+               ((texty-enough? lst)
+                  (if (null? rawr)
+                     (step-text lst null chunks)
+                     (step-text lst null (flush 'byte rawr chunks))))
+               (else
+                  (step (cdr lst) (cons (car lst) rawr) chunks))))
+         
+         (step lst null null))
+
+      (define (string-unlex chunks)  
+         (foldr
+            (λ (node tail)
+               (tuple-case node
+                  ((byte bytes)
+                     (append bytes tail))
+                  ((delimited left bytes right)
+                     ;(if (not (all texty? bytes))
+                     ;   (error "nontexty delimited node: " node))
+                     (cons left (append bytes (cons right tail))))
+                  ((text bytes)
+                     ;(if (not (all texty? bytes))
+                     ;   (error "nontexty delimited node: " node))
+                     (append bytes tail))
+                  (else
+                     (error "string-flatten: what kind of node is " node))))
+            null chunks))
+                     
+      (define (random-lex-string rs)
+         (lets ((rs n (rand rs 42)))
+            (let loop ((rs rs) (n n) (out null))
+               (if (= n 0)
+                  (values rs out)
+                  (lets
+                     ((rs t (rand rs 8))
+                      (n (- n 1)))
+                     (cond
+                        ((eq? t 0) (loop rs n (cons #\\ out)))
+                        ((eq? t 1) (loop rs n (cons #\" out)))
+                        ((eq? t 2) (loop rs n (cons #\' out)))
+                        ((eq? t 3) (loop rs n (cons 0 out)))
+                        ((eq? t 4)
+                           (lets ((rs a (rand rs 256)))
+                              (loop rs n (cons a out))))
+                        (else 
+                           (loop rs n (cons #\a out)))))))))
+            
+      ;; quick string lexer tests
+
+      ;; does data stay correct?
+      '(let loop ((rs (seed->rands (time-ms))) (n 0) (input '(233 39 39 97 97 97 0)))
+         (if (= n 10000)
+            (print "string lex passed tests")
+            (lets
+               ((rs next (random-lex-string rs))
+                (chunks (string-lex input))
+                (output (string-unlex chunks)))
+               (if (eq? 0 (band n 255))
+                  (print "test round " n ": " input " → " chunks))
+               (if (equal? input output)
+                  (loop rs (+ n 1) next)
+                  (begin
+                     (print input " → " output ". fail.")
+                     (error "string-lex is broken: " input))))))
+
+      ;; does random data not look texty?
+      '(let loop ((rs (seed->rands (time-ms))) (n 0) (matched 0))
+         (if (eq? 1 (band n 63))
+            (print "Probability " (round (* (/ matched n) 100)) "%"))
+         (if (= n 500)
+            (print "Probability " (round (* (/ matched n) 100)) "%")
+            (lets 
+               ((rs l (random-numbers rs 256 4096))
+                (cs (string-lex l)))
+               (loop rs (+ n 1)
+                  (+ matched (if (> (length cs) 1) 1 0))))))
+
+      ;;; Text mutations
+
+      ; check that the nodes do look stringy enough to mutate with these 
+      ; heuristics, meaning there are some nodes and/or just one, but it's
+      ; stringy
+      (define (stringy-length cs)
+         (let ((l (length cs)))
+            (cond
+               ((eq? l 0) #false)
+               ((eq? 'byte (ref (car cs) 1)) #false)
+               (else l))))
+
+      (define silly-strings 
+         (map string->list
+            (list "%n" "%n" "%s" "%d" "%p" "%#x" "\\0" "aaaa%d%n")))
+
+      (define n-sillies 
+         (length silly-strings))
+
+      (define (random-silly rs)
+         (lets ((rs p (rand rs n-sillies)))
+            (values rs (lref silly-strings p))))
+
+      (define (random-badness rs)
+         (lets ((rs n (rand rs 20)))
+            (let loop ((rs rs) (n (+ n 1)) (out null))
+               (if (eq? n 0)
+                  (values rs out)
+                  (lets ((rs x (random-silly rs)))
+                     (loop rs (- n 1) (append x out)))))))
+
+      (define (overwrite new old)
+         (if (null? new)
+            old
+            (cons (car new)
+               (overwrite (cdr new)
+                  (if (pair? old) (cdr old) old)))))
+
+      (define (rand-as-count rs)
+         (lets ((rs type (rand rs 11)))
+            (cond
+               ((eq? type 0) (values rs 127))
+               ((eq? type 1) (values rs 128))
+               ((eq? type 2) (values rs 255))
+               ((eq? type 3) (values rs 256))
+               ((eq? type 4) (values rs 16383))
+               ((eq? type 5) (values rs 16384))
+               ((eq? type 6) (values rs 32767))
+               ((eq? type 7) (values rs 32768))
+               ((eq? type 8) (values rs 65535))
+               ((eq? type 9) (values rs 65536))
+               (else
+                  (lets ((rs n (rand rs 1024)))
+                     (values rs n))))))
+
+      (define (push-as n tail)
+         (if (eq? n 0)
+            tail
+            (lets ((n _ (fx- n 1)))
+               (push-as n (cons #\a tail)))))
+
+      (define (mutate-text-data rs lst)
+         (lets ((rs x (rand rs 4)))
+            (cond
+               ((eq? x 0) ;; insert badness
+                  (lets
+                     ((rs p (rand rs (length lst)))
+                      (rs bad (random-badness rs)))
+                     (values rs (ledn lst p (λ (tail) (append bad tail))))))
+               ((eq? x 1) ;; replace badness
+                  (lets
+                     ((rs p (rand rs (length lst)))
+                      (rs bad (random-badness rs)))
+                     (values rs (ledn lst p (λ (tail) (overwrite bad tail))))))
+               ((eq? x 2) ;; insert as
+                  (lets
+                     ((rs n (rand-as-count rs))
+                      (rs pos (rand rs (length lst))))
+                     (values rs 
+                        (ledn lst pos
+                           (λ (tail) (push-as n tail))))))
+               (else
+                  (values rs (append lst (list 0)))))))
+
+      (define (string-mutate rs cs l)
+         (lets ((rs p (rand rs l)))
+            (tuple-case (lref cs p)
+               ((text bs)
+                  (lets ((rs bs (mutate-text-data rs bs)))
+                     (values rs (lset cs p (tuple 'text bs)))))
+               ((byte bs)
+                  (string-mutate rs cs l))
+               ((delimited left bs right)
+                  (lets ((rs bs (mutate-text-data rs bs)))
+                     (values rs (lset cs p (tuple 'delimited left bs right)))))
+               (else is bad
+                  (error "string-mutate: what is " bad)))))
+                     
+      (define (ascii-bad rs ll meta) ;; insert possible badness to ASCII data
+         (lets
+            ((data (vec->list (car ll)))
+             (cs (string-lex data))
+             (l (stringy-length cs)))
+            (if l
+               (lets 
+                  ((rs cs (string-mutate rs cs l))
+                   (rs d (rand-delta-up rs)))
+                  (values ascii-bad rs 
+                     (flush-bvecs (string-unlex cs) (cdr ll))
+                     (inc meta 'ab-string) d))
+               (values ascii-bad rs ll meta -1))))
+
+   
+      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
       ; [i]nsert
       ; [r]epeat
       ; [d]rop
       ; [s]wap/[s]tutter/[s]urf <- replace with [j]ump?
+      ; [a]scii
 
       (define *mutations*
          (list
+
+            ;; [a]sctii
+            (tuple "ab" ascii-bad "enhance silly issues in ASCII string data handling")
 
             ;; [b]yte (single)
             (tuple "bd" sed-byte-drop "drop a byte")
@@ -733,7 +994,7 @@
             (tuple "bp" sed-byte-perm "permute some bytes")
             (tuple "bei" sed-byte-inc "increment a byte by one")
             (tuple "bed" sed-byte-dec "decrement a byte by one")
-            (tuple "ber" sed-byte-dec "swap a byte with a random one")
+            (tuple "ber" sed-byte-random "swap a byte with a random one")
 
             ;; [s]equence of bytes
             (tuple "sr" sed-seq-repeat "repeat a sequence of bytes")
@@ -750,6 +1011,10 @@
             (tuple "ls" sed-line-swap "swap two lines")
             (tuple "lp" sed-line-perm "swap order of lines")
 
+            (tuple "lis" sed-line-ins "insert a line from elsewhere")
+            (tuple "lrs" sed-line-replace "replace a line with one from elsewhere")
+
+
             ;; tree
             (tuple "td" sed-tree-del "delete a node")
             (tuple "tr2" sed-tree-dup "duplicate a node")
@@ -765,7 +1030,8 @@
             (tuple "num"   sed-num "try to modify a textual number")
             ;(tuple "str"  sed-str "try to modify a string")
             ;(tuple "word" sed-word "try to play with what look like n-byte words or values")
-
+            (tuple "xp"    xp-mutate "try to parse XML and mutate it")
+         
             ;; crlf, whitspace confusion (^L, space, tab, \n->\r\n, \r)
             ;; lists
 
@@ -779,7 +1045,7 @@
             ))
 
       (define default-mutations
-         "ft=2,fo=2,fn,num=5,td,tr2,ts1,tr,ts2,ld,lds,lr2,li,ls,lp,lr,sr,sd,bd,bf,bi,br,bp,bei,bed,ber,uw,ui=2")
+         "ft=2,fo=2,fn,num=5,td,tr2,ts1,tr,ts2,ld,lds,lr2,li,ls,lp,lr,lis,lrs,sr,sd,bd,bf,bi,br,bp,bei,bed,ber,uw,ui=2,xp=9,ab")
 
       (define (name->mutation str)
          (or (choose *mutations* str)
