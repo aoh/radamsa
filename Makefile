@@ -4,10 +4,16 @@ BINDIR=/bin
 CFLAGS=-Wall -O2
 OFLAGS=-O2
 OL=owl-lisp/bin/ol
+USR_BIN_OL=/usr/bin/ol
 
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
 everything: bin/radamsa .seal-of-quality
+
+build_radamsa:
+	test -x $(USR_BIN_OL)
+	$(USR_BIN_OL) $(OFLAGS) -o radamsa.c rad/main.scm
+	make bin/radamsa 
 
 bin/radamsa: radamsa.c
 	mkdir -p bin
@@ -26,7 +32,7 @@ bin/radamsa.exe: radamsa.c
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
 radamsa.c: rad/*.scm
-	make get-owl
+	test -x $(OL) || make get-owl
 	$(OL) $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
