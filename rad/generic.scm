@@ -119,16 +119,6 @@
                    (tl (append perm (drop tl n))))
                   (values rs (append hs tl))))))
 
-      ;; clone a value to another position
-      (define (list-clone rs l)
-         (if (null? l)
-            (values rs l)
-            (lets
-               ((len (length l))
-                (rs from (rand rs len))
-                (rs to (rand rs len)))
-               (values rs (lins l to (lref l from))))))
-
       ;; connect prefix of al somewhere to bl, and make sure that (list-fuse l l) != l
       (define list-fuse fuse)
 
