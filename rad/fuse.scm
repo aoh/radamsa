@@ -67,7 +67,7 @@
              (bl (suffixes b))
              (nodes (list (cons al bl))))
             (let loop ((rs rs) (nodes nodes) (fuel search-fuel))
-               (if (< search-fuel 0)
+               (if (< fuel 0)
                   (any-position-pair rs nodes)
                   (lets ((rs x (rand rs search-stop-ip)))
                      (if (eq? x 0)
