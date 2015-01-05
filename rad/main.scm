@@ -1,3 +1,5 @@
+#!/usr/bin/ol -r
+
 ;;; 
 ;;; Radamsa 
 ;;;
