@@ -104,6 +104,12 @@
                (random-stream (seed->rands seed))
                (put empty 'generator 'random))))
 
+      (define (fatal-read-error path)
+         (if (dir->list path)
+            (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
+            (print*-to stderr (list "Error: failed to open '" path "'")))
+         (halt exit-read-error))
+         
       ;; paths → (rs → rs' ll|#false meta|error-str)
       (define (file-streamer paths)
          (lets
@@ -117,11 +123,7 @@
                      (lets ((rs ll (port->stream rs port)))
                         (values rs ll 
                            (list->ff (list '(generator . file) (cons 'source path)))))
-                     (begin   
-                        (if (dir->list path)
-                           (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
-                           (print*-to stderr (list "Error: failed to open '" path "'")))
-                        (halt exit-read-error)))))
+                     (fatal-read-error path))))
             gen))
 
       (define (walk-to-jump rs a as b bs)
@@ -166,16 +168,23 @@
                    (rs bp (rand rs n))
                    (a (vec-ref paths ap))
                    (b (vec-ref paths bp))
-                   (rs lla (port->stream rs (open-input-file a)))
-                   (rs llb (port->stream rs (open-input-file b)))
-                   (rs seed (rand rs #xfffffffff)))
-                  (values rs
-                     (jump-somewhere (seed->rands seed) lla llb)
-                     (list->ff
-                        (list 
-                           '(generator . jump)
-                           (cons 'head a)
-                           (cons 'tail b))))))
+                   (pa (open-input-file a))
+                   (pb (open-input-file b)))
+                  (cond
+                     ((not pa) (fatal-read-error a))
+                     ((not pb) (fatal-read-error b))
+                     (else
+                        (lets
+                           ((rs lla (port->stream rs (open-input-file a)))
+                            (rs llb (port->stream rs (open-input-file b)))
+                            (rs seed (rand rs #xfffffffff)))
+                           (values rs
+                              (jump-somewhere (seed->rands seed) lla llb)
+                              (list->ff
+                                 (list 
+                                    '(generator . jump)
+                                    (cons 'head a)
+                                    (cons 'tail b)))))))))
             gen))
 
       (define (string->generator-priorities str)
