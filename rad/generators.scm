@@ -8,6 +8,7 @@
       (owl base)
       (owl sys)
       (rad shared)
+      (rad fuse)
       (only (owl primop) halt))
 
    (export 
@@ -106,8 +107,7 @@
       ;; paths → (rs → rs' ll|#false meta|error-str)
       (define (file-streamer paths)
          (lets
-            ((paths (list->vector paths))
-             (n (vec-len paths)))
+            ((n (vec-len paths)))
             (define (gen rs)
                (lets
                   ((rs n (rand rs n))
@@ -122,6 +122,60 @@
                            (print*-to stderr (list "Error: failed to open '" path "'. Please use -r if you want to include samples from directories."))
                            (print*-to stderr (list "Error: failed to open '" path "'")))
                         (halt exit-read-error)))))
+            gen))
+
+      (define (walk-to-jump rs a as b bs)
+         (lets
+            ((finish
+               (λ () 
+                  (lets
+                     ((a (vector->list a))
+                      (b (vector->list b))
+                      (rs ab (fuse rs a b)))
+                     (cons (list->vector ab) bs))))
+             (rs n (rand rs 4)))
+             (if (eq? n 0)
+               (finish)
+               (lets ((aa as (uncons as #false)))
+                  (if aa
+                     (lets ((rs n (rand rs 3)))
+                        (if (eq? n 0)
+                           (cons a 
+                              (walk-to-jump rs aa as b bs))
+                           (lets ((bb bs (uncons bs #false)))
+                              (if bb
+                                 (cons a 
+                                    (walk-to-jump rs aa as bb bs))
+                                 (finish)))))
+                     (finish))))))
+
+      (define (jump-somewhere rs la lb)
+         (lets ((a as (uncons la #false)))
+            (if a
+               (lets ((b bs (uncons lb #false)))
+                  (if b
+                     (walk-to-jump rs a as b bs)
+                     (cons a as)))
+               lb)))
+
+      (define (jump-streamer paths)
+         (lets ((n (vec-len paths)))
+            (define (gen rs)
+               (lets
+                  ((rs ap (rand rs n))
+                   (rs bp (rand rs n))
+                   (a (vec-ref paths ap))
+                   (b (vec-ref paths bp))
+                   (rs lla (port->stream rs (open-input-file a)))
+                   (rs llb (port->stream rs (open-input-file b)))
+                   (rs seed (rand rs #xfffffffff)))
+                  (values rs
+                     (jump-somewhere (seed->rands seed) lla llb)
+                     (list->ff
+                        (list 
+                           '(generator . jump)
+                           (cons 'head a)
+                           (cons 'tail b))))))
             gen))
 
       (define (string->generator-priorities str)
@@ -144,27 +198,34 @@
       (define (priority->generator rs args fail n)
          ;; → (priority . generator) | #false
          (λ (pri)
-            (if pri
-               (lets ((name priority pri))
-                  (cond
-                     ((equal? name "stdin")
-                        ;; a generator to read data from stdin
-                        ;; check n and preread if necessary
-                        (if (first (λ (x) (equal? x "-")) args #false)
-                           ;; "-" was given, so start stdin generator + possibly preread
-                           (cons priority
-                              (stdin-generator rs (eq? n 1)))
-                           #false))
-                     ((equal? name "file")
-                        (let ((args (keep (λ (x) (not (equal? x "-"))) args)))
-                           (if (null? args)
-                              #false ; no samples given, don't start this one
-                              (cons priority (file-streamer args)))))
-                     ((equal? name "random")
-                        (cons priority random-generator))
-                     (else
-                        (fail (list "Unknown data generator: " name)))))
-               (fail "Bad generator priority"))))
+            (lets
+               ((paths (keep (λ (x) (not (equal? x "-"))) args))
+                (paths (if (null? paths) #false (list->vector paths))))
+               (if pri
+                  (lets ((name priority pri))
+                     (cond
+                        ((equal? name "stdin")
+                           ;; a generator to read data from stdin
+                           ;; check n and preread if necessary
+                           (if (first (λ (x) (equal? x "-")) args #false)
+                              ;; "-" was given, so start stdin generator + possibly preread
+                              (cons priority
+                                 (stdin-generator rs (eq? n 1)))
+                              #false))
+                        ((equal? name "file")
+                           (if paths
+                              (cons priority (file-streamer paths))
+                              #false))
+                        ((equal? name "jump")
+                           (if paths
+                              (cons priority
+                                 (jump-streamer paths))
+                              #false))
+                        ((equal? name "random")
+                           (cons priority random-generator))
+                        (else
+                           (fail (list "Unknown data generator: " name)))))
+                  (fail "Bad generator priority")))))
 
       (define (generator-priorities->generator rs pris args fail n)
          (lets 

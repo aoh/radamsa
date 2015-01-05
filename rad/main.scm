@@ -69,7 +69,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                   default ,default-patterns)
               (generators "-g" "--generators" cook ,string->generator-priorities ; the rest of initialization needs all args
                   comment "which data generators to use"
-                  default "random,file=1000,stdin=100000")
+                  default "random,file=1000,jump=200,stdin=100000")
               (metadata "-M" "--meta" has-arg
                   comment "save metadata about generated files to this file")
               (recursive "-r" "--recursive"
