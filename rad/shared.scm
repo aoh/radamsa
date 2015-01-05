@@ -123,8 +123,8 @@
       (define (mutate-num rs num)
          (lets ((rs n (rand rs 12)))
             (cond
-               ((eq? n 0)  (values rs (+ n 1)))
-               ((eq? n 1)  (values rs (- n 1)))
+               ((eq? n 0)  (values rs (+ num 1)))
+               ((eq? n 1)  (values rs (- num 1)))
                ((eq? n 2)  (values rs 0)) ;; todo, pack funny nums to a list and reduce opts
                ((eq? n 3)  (values rs 1))
                ((eq? n 4)  (rand-elem rs interesting-numbers))
@@ -132,7 +132,7 @@
                ((eq? n 6)  (rand-elem rs interesting-numbers))
                ((eq? n 7)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (+ num x))))
                ((eq? n 8)  (lets ((rs x (rand-elem rs interesting-numbers))) (values rs (- x num))))
-               ((eq? n 9)  (lets ((rs m (rand rs (* n 2)))) (values rs (- n m))))
+               ((eq? n 9)  (lets ((rs m (rand rs (* num 2)))) (values rs (- num m))))
                (else
                   (lets
                      ((rs n (rand-range rs 1 129))
