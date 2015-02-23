@@ -641,7 +641,7 @@
                      (inc meta 'tree-swap-two)
                      +1)))))
 
-      (define sed-tree-del (sed-tree-op (λ (node) null) 'tree-del))
+      (define sed-tree-del (sed-tree-op (λ (node) (cdr node)) 'tree-del))
 
       (define sed-tree-dup (sed-tree-op (λ (node) (cons (car node) node)) 'tree-dup))
 
