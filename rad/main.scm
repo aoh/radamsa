@@ -57,7 +57,7 @@ Radamsa was written by Aki Helin at OUSPG.")
               (about "-a" "--about" comment "what is this thing?")
               (version "-V" "--version" comment "show program version")
               (output-pattern "-o" "--output" has-arg default "-" cook ,(λ (x) x)
-                  comment "output pattern, e.g. /tmp/fuzz-%n.foo, -, :80 or 127.0.0.1:80")
+                  comment "output pattern, e.g. out.bin /tmp/fuzz-%n.%s, -, :80 or 127.0.0.1:80")
               (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate (number or inf)")
               (seed "-s" "--seed" cook ,string->natural comment "random seed (number, default random)")
@@ -182,6 +182,16 @@ Radamsa was written by Aki Helin at OUSPG.")
                         (walk prefix (cdr paths) (cons this out)))))))
          (walk "" paths null))
 
+      ;; (sample-path ..) → (byte ...)
+      (define (pick-suffix paths)
+         (if (null? paths)
+            (pick-suffix (list ""))
+            (let loop ((cs (reverse (string->list (car paths)))) (out null))
+               (cond
+                  ((null? cs) (string->list "data"))
+                  ((eq? (car cs) #\.) out)
+                  (else (loop (cdr cs) (cons (car cs) out)))))))
+         
       ;; dict args → rval
       (define (start-radamsa dict paths)
          ;; show command line stuff
@@ -198,7 +208,12 @@ Radamsa was written by Aki Helin at OUSPG.")
                (print version-str)
                0)
             ((not (getf dict 'output))
-               (let ((os (string->outputs (getf dict 'output-pattern) (getf dict 'count))))
+               (let 
+                  ((os 
+                     (string->outputs 
+                        (getf dict 'output-pattern)
+                        (getf dict 'count)
+                        (pick-suffix paths))))
                   (if os
                      (start-radamsa (put dict 'output os) paths)
                      1)))

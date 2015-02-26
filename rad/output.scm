@@ -42,7 +42,7 @@
                   (else ;; no more numbers
                      (values (cons x ll) n))))))
 
-      (define (file-writer pat)
+      (define (file-writer pat suf)
          (define (gen meta)
             (lets 
                ((path ;; <- could also just regex it there
@@ -55,6 +55,7 @@
                               ((and (eq? char #\%) (pair? tl))
                                  (case (car tl)
                                     ((#\n) (render (get meta 'nth 0) (cdr tl)))
+                                    ((#\s) (append suf (cdr tl)))
                                     ((#\0) ;; %0[0-9]+n -> testcase number with padding
                                        (lets
                                           ((tlp pad (get-natural tl))
@@ -146,7 +147,7 @@
                   (put (put meta 'output 'tcp-server) 'ip (ip->string ip))))))
 
       ;; o n → (out :: → out' fd meta) v null | #false, where os is string from -o, and n is number from -n
-      (define (string->outputs str n)
+      (define (string->outputs str n suf)
          (cond
             ((equal? str "-") ;; conventional way to ask for standard output (and input)
                stdout-stream)
@@ -180,5 +181,5 @@
                (print-to stderr "Refusing to overwrite file '" str "' many times. You should add %n or %0[padding]n to the path.")
                #false)
             (else
-               (file-writer str))))
+               (file-writer str suf))))
 ))
