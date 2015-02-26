@@ -873,7 +873,7 @@
 
       (define silly-strings 
          (map string->list
-            (list "%n" "%n" "%s" "%d" "%p" "%#x" "\\0" "aaaa%d%n")))
+            (list "%n" "%n" "%s" "%d" "%p" "%#x" "\\0" "aaaa%d%n" "`xcalc`" ";xcalc" "$(xcalc)" "!xcalc" "\"xcalc" "\'xcalc" "\\x00" "NaN" "+inf" "\\r\\n" "\\r" "\\n" "\\x0a" "\\x0d" "$PATH" "$!!" "!!")))
 
       (define n-sillies 
          (length silly-strings))
