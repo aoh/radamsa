@@ -141,7 +141,7 @@
                       (b (vector->list b))
                       (rs ab (fuse rs a b)))
                      (consume as)
-                     (cons (list->vector ab) bs))))
+                     (cons (list->byte-vector ab) bs))))
              (rs n (rand rs ip))
              (ip (+ ip 1)))
              (if (eq? n 0)
@@ -183,8 +183,8 @@
                      ((not pb) (fatal-read-error b))
                      (else
                         (lets
-                           ((rs lla (port->stream rs (open-input-file a)))
-                            (rs llb (port->stream rs (open-input-file b)))
+                           ((rs lla (port->stream rs pa))
+                            (rs llb (port->stream rs pb))
                             (rs seed (rand rs #xfffffffff)))
                            (values rs
                               (jump-somewhere (seed->rands seed) lla llb)
