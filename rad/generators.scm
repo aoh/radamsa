@@ -126,7 +126,13 @@
                      (fatal-read-error path))))
             gen))
 
-      (define (walk-to-jump rs a as b bs)
+      (define (consume ll)
+         (cond
+            ((null? ll) ll)
+            ((pair? ll) (consume (cdr ll)))
+            (else (consume (ll)))))
+         
+      (define (walk-to-jump rs ip a as b bs)
          (lets
             ((finish
                (λ () 
@@ -134,8 +140,10 @@
                      ((a (vector->list a))
                       (b (vector->list b))
                       (rs ab (fuse rs a b)))
+                     (consume as)
                      (cons (list->vector ab) bs))))
-             (rs n (rand rs 4)))
+             (rs n (rand rs ip))
+             (ip (+ ip 1)))
              (if (eq? n 0)
                (finish)
                (lets ((aa as (uncons as #false)))
@@ -143,11 +151,11 @@
                      (lets ((rs n (rand rs 3)))
                         (if (eq? n 0)
                            (cons a 
-                              (walk-to-jump rs aa as b bs))
+                              (walk-to-jump rs ip aa as b bs))
                            (lets ((bb bs (uncons bs #false)))
                               (if bb
                                  (cons a 
-                                    (walk-to-jump rs aa as bb bs))
+                                    (walk-to-jump rs ip aa as bb bs))
                                  (finish)))))
                      (finish))))))
 
@@ -156,7 +164,7 @@
             (if a
                (lets ((b bs (uncons lb #false)))
                   (if b
-                     (walk-to-jump rs a as b bs)
+                     (walk-to-jump rs 3 a as b bs)
                      (cons a as)))
                lb)))
 
