@@ -126,6 +126,9 @@
                   (lets ((rs which tail (mutate-a-num rs (cdr lst) nfound)))
                      (values rs which (cons (car lst) tail)))))))
 
+      (define (sed-nop  rs ll meta)
+         (values sed-nop rs ll (inc meta 'nop) 0))
+
       ;; todo: fixed scores, should be randomized
       (define (sed-num rs ll meta) ;; edit a number
          (lets
@@ -873,7 +876,15 @@
 
       (define silly-strings 
          (map string->list
-            (list "%n" "%n" "%s" "%d" "%p" "%#x" "\\0" "aaaa%d%n" "`xcalc`" ";xcalc" "$(xcalc)" "!xcalc" "\"xcalc" "'xcalc" "\\x00" "NaN" "+inf" "\\r\\n" "\\r" "\\n" "\\x0a" "\\x0d" "$PATH" "$!!" "!!" "&#000;" "\\u0000" "$&" "$+" "$`" "$'" "$1")))
+            (list 
+               "%n" "%n" "%s" "%d" "%p" "%#x" 
+               "\\0" "aaaa%d%n" 
+               "`xcalc`" ";xcalc" "$(xcalc)" "!xcalc" "\"xcalc" "'xcalc" 
+               "\\x00" "\\r\\n" "\\r" "\\n" "\\x0a" "\\x0d" 
+               "NaN" "+inf" 
+               "$PATH" 
+               "$!!" "!!" "&#000;" "\\u0000" 
+               "$&" "$+" "$`" "$'" "$1")))
 
       (define n-sillies 
          (length silly-strings))
@@ -980,7 +991,7 @@
       ; [s]wap/[s]tutter/[s]urf <- replace with [j]ump?
       ; [a]scii
 
-      (define *mutations*
+      (define mutations-1
          (list
 
             ;; [a]sctii
@@ -1020,8 +1031,10 @@
             (tuple "tr2" sed-tree-dup "duplicate a node")
             (tuple "ts1" sed-tree-swap-one "swap one node with another one")
             (tuple "ts2" sed-tree-swap-two "swap two nodes pairwise")
-            (tuple "tr"  sed-tree-stutter "repeat a path of the parse tree")
+            (tuple "tr"  sed-tree-stutter "repeat a path of the parse tree")))
 
+      (define mutations-2
+         (list
             ;; utf-8
             (tuple "uw" sed-utf8-widen  "try to make a code point too wide")
             (tuple "ui" sed-utf8-insert "insert funny unicode")
@@ -1041,8 +1054,14 @@
             (tuple "ft" sed-fuse-this "jump to a similar position in block")
             (tuple "fn" sed-fuse-next "likely clone data between similar positions")
             (tuple "fo" sed-fuse-old "fuse previously seen data elsewhere")
+            
+            (tuple "nop" sed-nop "do nothing (debug/test)")
 
             ))
+
+      (define *mutations*
+         (foldr append null
+            (list mutations-1 mutations-2)))
 
       (define default-mutations
          "ft=2,fo=2,fn,num=5,td,tr2,ts1,tr,ts2,ld,lds,lr2,li,ls,lp,lr,lis,lrs,sr,sd,bd,bf,bi,br,bp,bei,bed,ber,uw,ui=2,xp=9,ab")
