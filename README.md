@@ -54,7 +54,7 @@ Software requirements for building from sources:
 Installation
 Instructions for downloading and compiling the current version in a Debian-based Linux are at the top of this page. There should also be static binary and a Windows-executable in the Downloads section. You only need to have the radamsa binary somewhere to use it, but running $ make install will also copy the manual page and make it usable for other users on the system.
 
-# Building Radamsa
+## Building Radamsa
 ```
  $ git clone https://github.com/aoh/radamsa.git
  $ cd radamsa
@@ -86,7 +86,7 @@ The 0.1 series of radamsa used a different set of global analysis. While this to
 For small sets of small samples the old one might still be useful. To compile it, use:
 
 ```
-$ wget http://ouspg.googlecode.com/files/radamsa-0.1.9.c.gz
+$ wget https://ouspg.googlecode.com/files/radamsa-0.1.9.c.gz
 $ gunzip radamsa-0.1.9.gz
 $ gcc -O2 -o radamsa radamsa-0.1.9.c
 $ ./radamsa --help
@@ -223,16 +223,18 @@ Remember that you can use e.g. tcpflow to record TCP traffic to files, which can
 A non-exhaustive list of free complementary tools:
 
 GDB (http://www.gnu.org/software/gdb/)
-Valgrind (http://valgrind.org/)
-AddressSanitizer (http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer)
-strace (http://sourceforge.net/projects/strace/)
-tcpflow (http://www.circlemud.org/~jelson/software/tcpflow/)
+ * Valgrind (http://valgrind.org/)
+ * AddressSanitizer (http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer)
+ * strace (http://sourceforge.net/projects/strace/)
+ * tcpflow (http://www.circlemud.org/~jelson/software/tcpflow/)
 
 A non-exhaustive list of related free tools:
-Zzuf (http://caca.zoy.org/wiki/zzuf)
-Bunny the Fuzzer (http://code.google.com/p/bunny-the-fuzzer/)
-Peach (http://peachfuzzer.com/)
-Sulley (http://code.google.com/p/sulley/)
+ * American fuzzy lop (http://lcamtuf.coredump.cx/afl/)
+ * Zzuf (http://caca.zoy.org/wiki/zzuf)
+ * Bunny the Fuzzer (http://code.google.com/p/bunny-the-fuzzer/)
+ * Peach (http://peachfuzzer.com/)
+ * Sulley (http://code.google.com/p/sulley/)
+
 Tools which are intended to improve security are usually complementary and should be used in parallel to improve the results. Radamsa aims to be an easy-to-set-up general purpose shotgun test to expose the easiest (and often severe due to being reachable from via input streams) cracks which might be exploitable by getting the program to process malicious data. It has also turned out to be useful for catching regressions when combined with continuous automatic testing.
 
 ## Some Known Results
