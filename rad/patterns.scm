@@ -73,7 +73,7 @@
             (tuple "nd" pat-many-dec "Mutate possibly many times" )
             (tuple "bu" pat-burst "Make several mutations closeby once")))
 
-      (define default-patterns "od,nd,bu")
+      (define default-patterns "od,nd=2,bu")
 
       (define (priority->pattern pri)
          (let ((func (choose *patterns* (car pri))))
