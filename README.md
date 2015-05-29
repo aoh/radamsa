@@ -54,7 +54,7 @@ Software requirements for building from sources:
 Installation
 Instructions for downloading and compiling the current version in a Debian-based Linux are at the top of this page. There should also be static binary and a Windows-executable in the Downloads section. You only need to have the radamsa binary somewhere to use it, but running $ make install will also copy the manual page and make it usable for other users on the system.
 
-Building Radamsa
+# Building Radamsa
 ```
  $ git clone https://github.com/aoh/radamsa.git
  $ cd radamsa
@@ -65,7 +65,22 @@ Building Radamsa
 
 On first build this will also fetch and build owl lisp to compile the Scheme sources to C. This may take a few minutes to complete. If you already have owl, you can build using it by using e.g. $ make OL=/usr/bin/ol.
 
-Building Legacy Radamsa 0.1.9
+If the build takes several aeons on your raspberry, you can usually skip a few steps and reduce your C compiler memory load by doing just:
+```
+ $ git clone https://github.com/aoh/radamsa.git
+ $ cd radamsa
+ $ git clone https://github.com/aoh/owl-lisp.git
+ $ (cd owl-lisp; make bin/vm)
+ $ owl-lisp/bin/vm owl-lisp/fasl/init.fasl -O1 -o radamsa.c rad/main.scm
+ $ cc -O2 -o radamsa radamsa.c
+ $ $ echo foo | ./radamsa
+ foo
+ foo
+``` 
+
+Radamsa itself is just a single standalone binary. You can move it where you please and remove the rest.
+
+## Building Legacy Radamsa 0.1.9
 The 0.1 series of radamsa used a different set of global analysis. While this tool has been used to find dozens of interesting vulnerabilities in the past, we recommend using the newest ones which do similar mutations in sub-linear space. The 0.1 series could take up to 100x the total sample set size of memory and generate data slower than 100Kb/s, while the newer versions work in roughly constant space and generate data an order of magnitude faster.
 
 For small sets of small samples the old one might still be useful. To compile it, use:
@@ -226,83 +241,85 @@ A robustness testing tool is obviously only good only if it really can find non-
 
 The list below has some CVE:s we know of that have been found by using Radamsa. Some of the results are from our own test runs, and some have been kindly provided by CERT-FI from their tests and other users. As usual, please note that CVE:s should be read as 'product X is now more robust (against Y)'.
 
-CVE-2007-3641 - libarchive - OUSPG
-CVE-2007-3644 - libarchive - OUSPG
-CVE-2007-3645 - libarchive - OUSPG
-CVE-2008-1372 - bzip2 (grafu or permu) - OUSPG
-CVE-2008-1387 - ClamAV - OUSPG
-CVE-2008-1412 - F-Secure - OUSPG
-CVE-2008-1837 - ClamAV - OUSPG
-CVE-2008-6536 - 7-zip - OUSPG
-CVE-2008-6903 - Sophos Anti-Virus - OUSPG
-CVE-2010-0001 - Gzip - integer underflow in unlzw - OUSPG
-CVE-2010-0192 - Acroread - OUSPG
-CVE-2010-1205 - libpng - OUSPG
-CVE-2010-1410 - Webkit - OUSPG
-CVE-2010-1415 - Webkit - OUSPG
-CVE-2010-1793 - Webkit - OUSPG
-CVE-2010-2065 - libtiff - found by CERT-FI
-CVE-2010-2443 - libtiff - found by CERT-FI
-CVE-2010-2597 - libtiff - found by CERT-FI
-CVE-2010-2482 - libtiff - found by CERT-FI
-CVE-2011-0522 - VLC - found by Harry Sintonen
-CVE-2011-0181 - Apple ImageIO - found by Harry Sintonen
-CVE-2011-0198 - Apple Type Services - found by Harry Sintonen
-CVE-2011-0205 - Apple ImageIO - found by Harry Sintonen
-CVE-2011-0201 - Apple CoreFoundation - found by Harry Sintonen
-CVE-2011-1276 - Excel - found by Nicolas Grégoire of Agarri
-CVE-2011-1186 - Chrome - OUSPG
-CVE-2011-1434 - Chrome - OUSPG
-CVE-2011-2348 - Chrome - OUSPG
-CVE-2011-2804 - Chrome/pdf - OUSPG
-CVE-2011-2830 - Chrome/pdf - OUSPG
-CVE-2011-2839 - Chrome/pdf - OUSPG
-CVE-2011-2861 - Chrome/pdf - OUSPG
-CVE-2011-3146 - librsvg - found by Sauli Pahlman
-CVE-2011-3654 - Mozilla Firefox - OUSPG
-CVE-2011-3892 - Theora - OUSPG
-CVE-2011-3893 - Chrome - OUSPG
-CVE-2011-3895 - FFmpeg - OUSPG
-CVE-2011-3957 - Chrome - OUSPG
-CVE-2011-3959 - Chrome - OUSPG
-CVE-2011-3960 - Chrome - OUSPG
-CVE-2011-3962 - Chrome - OUSPG
-CVE-2011-3966 - Chrome - OUSPG
-CVE-2011-3970 - libxslt - OUSPG
-CVE-2012-0449 - Firefox - found by Nicolas Grégoire of Agarri
-CVE-2012-0469 - Mozilla Firefox - OUSPG
-CVE-2012-0470 - Mozilla Firefox - OUSPG
-CVE-2012-0457 - Mozilla Firefox - OUSPG
-CVE-2012-2825 - libxslt - found by Nicolas Grégoire of Agarri
-CVE-2012-2849 - Chrome/GIF - OUSPG
-CVE-2012-3972 - Mozilla Firefox - found by Nicolas Grégoire of Agarri
-CVE-2012-1525 - Acrobat Reader - found by Nicolas Grégoire of Agarri
-CVE-2012-2871 - libxslt - found by Nicolas Grégoire of Agarri
-CVE-2012-2870 - libxslt - found by Nicolas Grégoire of Agarri
-CVE-2012-2870 - libxslt - found by Nicolas Grégoire of Agarri
-CVE-2012-4922 - tor - found by the Tor project
-CVE-2012-5108 - Chrome - OUSPG via NodeFuzz
-CVE-2012-2887 - Chrome - OUSPG via NodeFuzz
-CVE-2012-5120 - Chrome - OUSPG via NodeFuzz
-CVE-2012-5121 - Chrome - OUSPG via NodeFuzz
-CVE-2012-5145 - Chrome - OUSPG via NodeFuzz
-CVE-2012-4186 - Mozilla Firefox - OUSPG via NodeFuzz
-CVE-2012-4187 - Mozilla Firefox - OUSPG via NodeFuzz
-CVE-2012-4188 - Mozilla Firefox - OUSPG via NodeFuzz
-CVE-2012-4202 - Mozilla Firefox - OUSPG via NodeFuzz
-CVE-2013-0744 - Mozilla Firefox - OUSPG via NodeFuzz
-CVE-2013-1691 - Mozilla Firefox - OUSPG
-CVE-2013-1708 - Mozilla Firefox - OUSPG
-CVE-2013-4082 - Wireshark - found by cons0ul
-CVE-2013-1732 - Mozilla Firefox - OUSPG
-CVE-2014-3669 - PHP
-CVE-2014-3668 - PHP
-CVE-2014-3707 - cURL - Symeon Paraschoudis
-CVE-2014-7933 - Chrome - OUSPG
-CVE-2015-0797 - Mozilla Firefox - OUSPG
-CVE-2015-0813 - Mozilla Firefox - OUSPG
-CVE-2015-1220 - Chrome - OUSPG
-CVE-2015-1224 - Chrome - OUSPG
+CVE           | program    | credit
+--------------|------------|-----------
+CVE-2007-3641 | libarchive | OUSPG
+CVE-2007-3644 | libarchive | OUSPG
+CVE-2007-3645 | libarchive | OUSPG
+CVE-2008-1372 | bzip2 | OUSPG
+CVE-2008-1387 | ClamAV | OUSPG
+CVE-2008-1412 | F-Secure | OUSPG
+CVE-2008-1837 | ClamAV | OUSPG
+CVE-2008-6536 | 7-zip | OUSPG
+CVE-2008-6903 | Sophos Anti-Virus | OUSPG
+CVE-2010-0001 | Gzip | integer underflow in unlzw | OUSPG
+CVE-2010-0192 | Acroread | OUSPG
+CVE-2010-1205 | libpng | OUSPG
+CVE-2010-1410 | Webkit | OUSPG
+CVE-2010-1415 | Webkit | OUSPG
+CVE-2010-1793 | Webkit | OUSPG
+CVE-2010-2065 | libtiff | found by CERT-FI
+CVE-2010-2443 | libtiff | found by CERT-FI
+CVE-2010-2597 | libtiff | found by CERT-FI
+CVE-2010-2482 | libtiff | found by CERT-FI
+CVE-2011-0522 | VLC | found by Harry Sintonen
+CVE-2011-0181 | Apple ImageIO | found by Harry Sintonen
+CVE-2011-0198 | Apple Type Services | found by Harry Sintonen
+CVE-2011-0205 | Apple ImageIO | found by Harry Sintonen
+CVE-2011-0201 | Apple CoreFoundation | found by Harry Sintonen
+CVE-2011-1276 | Excel | found by Nicolas Grégoire of Agarri
+CVE-2011-1186 | Chrome | OUSPG
+CVE-2011-1434 | Chrome | OUSPG
+CVE-2011-2348 | Chrome | OUSPG
+CVE-2011-2804 | Chrome/pdf | OUSPG
+CVE-2011-2830 | Chrome/pdf | OUSPG
+CVE-2011-2839 | Chrome/pdf | OUSPG
+CVE-2011-2861 | Chrome/pdf | OUSPG
+CVE-2011-3146 | librsvg | found by Sauli Pahlman
+CVE-2011-3654 | Mozilla Firefox | OUSPG
+CVE-2011-3892 | Theora | OUSPG
+CVE-2011-3893 | Chrome | OUSPG
+CVE-2011-3895 | FFmpeg | OUSPG
+CVE-2011-3957 | Chrome | OUSPG
+CVE-2011-3959 | Chrome | OUSPG
+CVE-2011-3960 | Chrome | OUSPG
+CVE-2011-3962 | Chrome | OUSPG
+CVE-2011-3966 | Chrome | OUSPG
+CVE-2011-3970 | libxslt | OUSPG
+CVE-2012-0449 | Firefox | found by Nicolas Grégoire of Agarri
+CVE-2012-0469 | Mozilla Firefox | OUSPG
+CVE-2012-0470 | Mozilla Firefox | OUSPG
+CVE-2012-0457 | Mozilla Firefox | OUSPG
+CVE-2012-2825 | libxslt | found by Nicolas Grégoire of Agarri
+CVE-2012-2849 | Chrome/GIF | OUSPG
+CVE-2012-3972 | Mozilla Firefox | found by Nicolas Grégoire of Agarri
+CVE-2012-1525 | Acrobat Reader | found by Nicolas Grégoire of Agarri
+CVE-2012-2871 | libxslt | found by Nicolas Grégoire of Agarri
+CVE-2012-2870 | libxslt | found by Nicolas Grégoire of Agarri
+CVE-2012-2870 | libxslt | found by Nicolas Grégoire of Agarri
+CVE-2012-4922 | tor | found by the Tor project
+CVE-2012-5108 | Chrome | OUSPG via NodeFuzz
+CVE-2012-2887 | Chrome | OUSPG via NodeFuzz
+CVE-2012-5120 | Chrome | OUSPG via NodeFuzz
+CVE-2012-5121 | Chrome | OUSPG via NodeFuzz
+CVE-2012-5145 | Chrome | OUSPG via NodeFuzz
+CVE-2012-4186 | Mozilla Firefox | OUSPG via NodeFuzz
+CVE-2012-4187 | Mozilla Firefox | OUSPG via NodeFuzz
+CVE-2012-4188 | Mozilla Firefox | OUSPG via NodeFuzz
+CVE-2012-4202 | Mozilla Firefox | OUSPG via NodeFuzz
+CVE-2013-0744 | Mozilla Firefox | OUSPG via NodeFuzz
+CVE-2013-1691 | Mozilla Firefox | OUSPG
+CVE-2013-1708 | Mozilla Firefox | OUSPG
+CVE-2013-4082 | Wireshark | found by cons0ul
+CVE-2013-1732 | Mozilla Firefox | OUSPG
+CVE-2014-3669 | PHP
+CVE-2014-3668 | PHP
+CVE-2014-3707 | cURL | Symeon Paraschoudis
+CVE-2014-7933 | Chrome | OUSPG
+CVE-2015-0797 | Mozilla Firefox | OUSPG
+CVE-2015-0813 | Mozilla Firefox | OUSPG
+CVE-2015-1220 | Chrome | OUSPG
+CVE-2015-1224 | Chrome | OUSPG
 
 
 We would like to thank the Chromium project and Mozilla for analyzing, fixing and reporting further many of the above mentioned issues, CERT-FI for feedback and disclosure handling, and other users, projects and vendors who have responsibly taken care of uncovered bugs.
