@@ -61,10 +61,28 @@
                         tl))) ;; nothing shared after char
                tl sas)))
 
+      (define (alternate-suffixes rs a)
+        (let loop ((rs rs) (a a) (al null) (bl null))
+          (if (null? a) 
+            (values rs al bl)
+            (lets ((d rs (uncons rs #false)))
+              (cond
+                ((not d) (values rs al bl))
+                ((eq? 1 (fxband d 1))
+                  (loop rs (cdr a) (cons a al) bl))
+                (else
+                  (loop rs (cdr a) al (cons a bl))))))))
+
+      (define (initial-suffixes rs a b)
+          ;; avoid usually jumping into the same place (ft mutation, small samples, bad luck)
+          ;; if the inputs happen to be equal by alternating possible jump and land positions
+          (if (equal? a b)
+            (alternate-suffixes rs a)
+            (values rs (suffixes a) (suffixes b))))
+
       (define (find-jump-points rs a b)
          (lets
-            ((al (suffixes a))
-             (bl (suffixes b))
+            ((rs al bl (initial-suffixes rs a b))
              (nodes (list (cons al bl))))
             (let loop ((rs rs) (nodes nodes) (fuel search-fuel))
                (if (< fuel 0)
