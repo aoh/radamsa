@@ -62,16 +62,13 @@
                tl sas)))
 
       (define (alternate-suffixes rs a)
-        (let loop ((rs rs) (a a) (al null) (bl null))
+        (let loop ((rs rs) (a (cdr a)) (al (list a)) (bl (list a)))
           (if (null? a) 
             (values rs al bl)
             (lets ((d rs (uncons rs #false)))
-              (cond
-                ((not d) (values rs al bl))
-                ((eq? 1 (fxband d 1))
-                  (loop rs (cdr a) (cons a al) bl))
-                (else
-                  (loop rs (cdr a) al (cons a bl))))))))
+              (if (eq? 1 (fxband d 1))
+                (loop rs (cdr a) (cons a al) bl)
+                (loop rs (cdr a) al (cons a bl)))))))
 
       (define (initial-suffixes rs a b)
           ;; avoid usually jumping into the same place (ft mutation, small samples, bad luck)
