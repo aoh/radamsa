@@ -6,6 +6,7 @@
 
    (import
       (owl base)
+      (owl io)
       (only (owl primop) halt)
       (rad shared))
 
@@ -116,7 +117,7 @@
                            fd
                            (put (put (put meta 'output 'tcp-client) 'ip ips) 'port port))
                         (begin
-                           (interact sleeper-id 2) ;; avoid eating up a whole core if the target is down
+                           (sleep 100) ;; avoid eating up a whole core if the target is down
                            (if (= 0 (band n #xffff))
                               (print*-to stderr (list n " connection attempts to " ips ":" port)))
                            (loop (+ n 1)))))))
