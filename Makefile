@@ -3,7 +3,8 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O2
 OFLAGS=-O2
-OL=owl-lisp/bin/ol
+OWLVERSION=0.1.9
+OWL=owl-lisp-$(OWLVERSION)/bin/vm owl-lisp-$(OWLVERSION)/fasl/init.fasl
 USR_BIN_OL=/usr/bin/ol
 
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
@@ -25,15 +26,15 @@ fasl: radamsa.fasl
 	chmod +x fasl
 
 radamsa.fasl: rad/*.scm
-	$(OL) -o radamsa.fasl rad/main.scm
+	$(OWL) -o radamsa.fasl rad/main.scm
 
 bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
 radamsa.c: rad/*.scm
-	test -x $(OL) || make get-owl
-	$(OL) $(OFLAGS) -o radamsa.c rad/main.scm
+	make get-owl
+	$(OWL) $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -43,7 +44,7 @@ install: bin/radamsa
 
 clean:
 	-rm radamsa.c bin/radamsa .seal-of-quality
-	-cd owl-lisp && make clean
+	-rm -rf owl-lisp-*
 
 .seal-of-quality: bin/radamsa
 	-mkdir -p tmp
@@ -53,9 +54,8 @@ clean:
 get-owl:
 	# fetching and building owl to build radamsa
 	# this may take a few minutes on first build
-	-git clone https://github.com/aoh/owl-lisp.git
-	-cd owl-lisp && git pull 
-	cd owl-lisp && make
+	test -d owl-lisp-$(OWLVERSION) || curl -L https://github.com/aoh/owl-lisp/archive/v$(OWLVERSION).tar.gz | tar -zxvf -
+	cd owl-lisp-$(OWLVERSION) && make bin/vm
 
 todo:
 	grep -n "^ *;;* *todo:" rad/* | sed -e 's/: *;;* *todo:/ →/'
@@ -69,7 +69,7 @@ standalone:
 
 # a quick to compile vanilla bytecode executable
 bytecode:
-	$(OL) -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
+	$(OWL) -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 
