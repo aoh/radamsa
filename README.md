@@ -326,6 +326,14 @@ CVE-2015-1224 | Chrome | OUSPG
 
 We would like to thank the Chromium project and Mozilla for analyzing, fixing and reporting further many of the above mentioned issues, CERT-FI for feedback and disclosure handling, and other users, projects and vendors who have responsibly taken care of uncovered bugs.
 
+## Thanks
+
+The following people have contributed to the development of radamsa in code, ideas, issues or otherwise.
+
+ * Darkkey
+ * Branden Archer
+
+
 ## Troubleshooting
 
 Issues in Radamsa can be reported to the issue tracker. The tool is under development, but we are glad to get error reports even for known issues to make sure they are not forgotten.
