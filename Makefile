@@ -9,7 +9,7 @@ USR_BIN_OL=/usr/bin/ol
 
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
 
-everything: bin/radamsa .seal-of-quality
+everything: bin/radamsa
 
 build_radamsa:
 	test -x $(USR_BIN_OL)
@@ -46,6 +46,8 @@ clean:
 	-rm radamsa.c bin/radamsa .seal-of-quality
 	-rm -rf owl-lisp-*
 
+test: .seal-of-quality
+
 .seal-of-quality: bin/radamsa
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
@@ -56,9 +58,6 @@ get-owl:
 	# this may take a few minutes on first build
 	test -d owl-lisp-$(OWLVERSION) || curl -L https://github.com/aoh/owl-lisp/archive/v$(OWLVERSION).tar.gz | tar -zxvf -
 	cd owl-lisp-$(OWLVERSION) && make bin/vm
-
-todo:
-	grep -n "^ *;;* *todo:" rad/* | sed -e 's/: *;;* *todo:/ →/'
 
 # standalone build for shipping
 standalone:
