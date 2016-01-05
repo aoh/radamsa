@@ -222,7 +222,7 @@ Remember that you can use e.g. tcpflow to record TCP traffic to files, which can
 
 A non-exhaustive list of free complementary tools:
 
-GDB (http://www.gnu.org/software/gdb/)
+ * GDB (http://www.gnu.org/software/gdb/)
  * Valgrind (http://valgrind.org/)
  * AddressSanitizer (http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer)
  * strace (http://sourceforge.net/projects/strace/)
