@@ -222,7 +222,7 @@ Remember that you can use e.g. tcpflow to record TCP traffic to files, which can
 
 A non-exhaustive list of free complementary tools:
 
-GDB (http://www.gnu.org/software/gdb/)
+ * GDB (http://www.gnu.org/software/gdb/)
  * Valgrind (http://valgrind.org/)
  * AddressSanitizer (http://code.google.com/p/address-sanitizer/wiki/AddressSanitizer)
  * strace (http://sourceforge.net/projects/strace/)
@@ -325,6 +325,14 @@ CVE-2015-1224 | Chrome | OUSPG
 
 
 We would like to thank the Chromium project and Mozilla for analyzing, fixing and reporting further many of the above mentioned issues, CERT-FI for feedback and disclosure handling, and other users, projects and vendors who have responsibly taken care of uncovered bugs.
+
+## Thanks
+
+The following people have contributed to the development of radamsa in code, ideas, issues or otherwise.
+
+ * Darkkey
+ * Branden Archer
+
 
 ## Troubleshooting
 
