@@ -6,11 +6,9 @@ Radamsa is a test case generator for robustness testing, aka a fuzzer. It can be
 
 ```
  $ # please please please fuzz your programs. here is one way to get data for it:
- $ sudo apt-get install gcc curl
- $ curl http://haltp.org/download/radamsa-0.4.tar.gz \
-     | tar -zxvf - && cd radamsa-0.4 && make && sudo make install
- $ # signatures are also available at http://haltp.org/download
- $ cat file | radamsa > file.fuzzed
+ $ sudo apt-get gcc make git
+ $ git clone https://github.com/aoh/radamsa.git && cd radamsa && make && sudo make install
+ $ echo "HAL 9000" | radamsa
 ```
 
 ## What the Fuzz
