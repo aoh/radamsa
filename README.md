@@ -316,13 +316,13 @@ Q: Radamsa takes several GB of memory to compile!1
 A: This is most likely due to an issue with your C compiler. Use prebuilt images or try the quick build instrucitons in this page.
 
 Q: Radamsa does not compile using the instructions in this page!  
-A: Please file an issue at https://github.com/aoh/radamsa/issues if you don't see a similar one already filed, or contact us via email (ouspg@ee.oulu.fi) or IRC (#radamsa on freenode).
+A: Please file an issue at https://github.com/aoh/radamsa/issues if you don't see a similar one already filed, send email (aohelin@gmail.com) or IRC (#radamsa on freenode).
 
 Q: I used fuzzer X and found much more bugs from program Y than Radamsa did.  
-A: Cool. Let us know about it (ouspg@ee.oulu.fi) and we'll try to hack something X-ish to radamsa if it's general purpose enough. It'd also be useful to get some samples which you used to check how well radamsa does, because it might be overfitting some heuristic.
+A: Cool. Let me know about it (aohelin@gmail.com) and I'll try to hack something X-ish to radamsa if it's general purpose enough. It'd also be useful to get some samples which you used to check how well radamsa does, because it might be overfitting some heuristic.
 
 Q: Can I get support for using radamsa?  
-A: You can send email to us at ouspg@ee.oulu.fi or check if some of us happen to be hanging around at #radamsa on freenode.
+A: You can send email to aohelin@gmail.com or check if some of us happen to be hanging around at #radamsa on freenode.
 
 Q: Can I use radamsa on Windows?  
 A: An experimental Windows executable is now in Downloads, but we have usually not tested it properly since we rarely use Windows internally. Feel free to file an issue if something is broken.
