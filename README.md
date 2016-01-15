@@ -1,6 +1,6 @@
 # A Crash Course to Radamsa
 
-Radamsa is a test case generator for robustness testing, aka a fuzzer. It can be used to test how well a program can stand malformed and potentially malicious inputs. It works by making files which are interestingly different from given typically valid sample files. The modified files are then given to the target program, either as such or by some script. The main selling points of radamsa as opposed to other fuzzers are, that it is extremely easy to get running on most machines, is easy to script from command line, and has already been used to find a slew of security issues in programs you are likely using right now.
+Radamsa is a test case generator for robustness testing, a.k.a. a fuzzer. It is typically used to test how well a program can withstand malformed and potentially malicious inputs. It works by reading sample files of valid data and generating interestringly different outputs from them. The main selling points of radamsa are that it has already found a slew of bugs in programs that actually matter, it is easily scriptable and easy to get up and running.
 
 ## Nutshell:
 
@@ -13,82 +13,41 @@ Radamsa is a test case generator for robustness testing, aka a fuzzer. It can be
 
 ## What the Fuzz
 
-Computer programs are extremely complex beasts. In most programs extremely small errors in the code, compiler, library or any other component can lead to a vulnerability in the program, which malicious parties often can use to gain undesired powers. Fuzzing is one of the common techniques to find such weaknesses.
+Programming is hard. All nontrivial programs have bugs in them. What's more, even the simplest typical mistakes are in some of the most widely used programming languages usually enough for attackers to gain undesired powers.
 
-Many mature programs come with an extensive suite of tests which are used to ensure that the things which should work in it do indeed work as expected. This can be called positive testing. Typically a positive test assumes that the program works correctly for all certain kinds of inputs, and tests his by giving it a fixed or random case and checks that the program indeed gives the right answer. Similarly there are things that should not happen in a program, like crashing or getting stuck. Checking this tends to a significantly harder problem, because we know what the outcome would be, but have no idea as to what might cause it. Both kinds of tests are actually just approximations of proving properties about the program, but this is not yet a viable option because the semantics of current programming languages are quite messy.
+Fuzzing is one of the techniques to find such unexpected behavior from programs. The idea is simply to subject the program to various kinds of inputs and see what happens. There are two parts in this process: getting the various kinds of inputs and how to see what happens. Radamsa is a solution to the first part, and the second part is typically a short shell script. Testers usually have a more or less vague idea what should *not* happen, and they try to find out if this is so. This kind of testing is often referred to as negative testing, being the opposite of positive unit- or integration testing. Developers know a service should not crash, should not exponential amounts of memory, should not get stuck in an infinite loop, etc. Attackers know that they can probably turn certain kinds of memory safety bugs into exploits, so they fuzz typically instrumented versions of the target programs and wait for such errors to be found. In theory, the idea is to counterprove by finding a counterexample a theorem about the program stating that for all inputs something doesn't happen.
 
-Fuzzing is one of the techniques used mainly for negative testing. It simply means generating a stream of more and less random data for the program being tested, and waiting for the thing that should not happen. Sometimes fuzzing refers to the whole setup used to do this, but in this document a fuzzer means just the tool which generates the stream of test cases.
+There are many kinds of fuzzers and ways to apply them. Some trace the target program and generate test cases based on the behavior. Some need to know the format of the data and generate test cases based on that information. Radamsa is an extremely "black-box" fuzzer, because it needs no information about the program nor the format of the data. One can pair it with coverage analysis during testing to likely improve the quality of the sample set during a continuous test run, but this is not mandatory. The main goal is to first get tests running easily, and then refine the technique applied if necessary.
 
-There are many kinds of fuzzers. A common way to classify them is to map the amount of data the fuzzer has about the target program or appliance and its internals to a grayscale color. A theoretically fully black-box fuzzer doesn't know anything about anything and thus only generates data out of nothing. A practical black-box fuzzer is given samples of what kind of data a program usually processes, but is then assumed to go about generating interesting data without any feedback as to what is processing the data or even how well the previous attempts have worked. Gray-box fuzzers have some knowledge about the target and running of the tests, and a white-box fuzzer often means one that is given the full spec of data formats, program, the binary in question and/or runtime tracing data possibly with control of the runtime behavior.
+Radamsa is intended to be a good general purpose fuzzer for all kinds of data. The goal is to be able to find issues no matter what kind of data the program processes, whether it's xml or mp3, and conversely that not finding bugs implies that other similar tools likely won't find them either. This is accomplished by having various kinds of heuristics and change patterns, which are varied during the tests. Sometimes there is just one change, sometimes there a slew of them, sometimes there are bit flips, sometimes something more advanced and novel.
 
-Intuitively black-box fuzzers are easy to use and general purpose, but don't dig deep into the state space of a program, unless they are lucky, while white-box fuzzers are harder to use and tailored for some particular task, and have what it needs to dig deep into the intended functionality. The set of bugs found by different approaches are usually at least somewhat disjoint, so it's not a question of what is the best color, but rather how well different shades are covered on the attack surface.
-
-In addition to fuzzing, other typical approaches to testing include static code analysis, where preferably a program is used to automatically detect possible vulnerabilities in code, and various forms of simulated program running which allow one to step through the possible state space. The pros of fuzzing are that it is often extremely simple to start testing a product, scaling is easy, testing depth can be increased later without need for changing the test harness, it requires relatively little human time and each bug comes automatically paired with a proof of concept that triggers the undesired condition.
-
-All code should be tested in as many ways as possible and as early as possible. An important thing to keep in mind is that an opportunistic hacker will most likely start by doing some simple black-box fuzzing, so it doesn't help if your product has been extensively unit tested on the function level, but there is a vulnerable third party library, confusion of roles, thread race or another condition which is still easily exposed by black-box tools. Full-program fuzzing is basically unit testing done too late, but you should still always do it.
-
-## Radamsa
-
-Radamsa is a somewhat new kind of black-box fuzzer. It is designed to be a good general purpose tool for developers and vendors who want to test how well their products can withstand malicious inputs. Unlike most similar tools, it is intended to work for just about any kind of data without any extra hacking. It has been used to find previously unknown security vulnerabilities in handling of many kinds of file formats with very different structure, like bmp, png, gif, jpeg, svg, xml, ogg, avi, html, gz, bzip2, tiff, pdf and zip. The main goal is to make a tool that works well no matter what kind of data is thrown at it. By extension, we hope other fuzzers will not to find too many bugs in programs that developers have already fuzzed with radamsa.
-
-The goal of making a truly general purpose fuzzer poses some interesting problems. The current approach is to combine a lot of different kinds of mutations which have turned out to find interesting bugs. Many of the mutations don't assume anything about the structure of the data and rely solely on luck or redundancy in the data, while others check if some commonly used patterns are used and make changes accordingly. Radamsa is thus actually a flock of fuzzers, wrapped in an easy-to-use package, which we hope will be used by also others than us to make programs more secure.
-
-Radamsa is a side product of OUSPG's Protos Genome Project, in which some techniques to automatically analyze and examine the structure of communication protocols were explored. A subset of one of the tools turned out to be a surprisingly effective file fuzzer. Our first prototype black-box fuzzer tools mainly used regular and context-free formal languages to represent the inferred model of the data.
+Radamsa is a side-product of OUSPG's Protos Genome Project, in which some techniques to automatically analyze and examine the structure of communication protocols were explored. A subset of one of the tools turned out to be a surprisingly effective file fuzzer. The first prototype black-box fuzzer tools mainly used regular and context-free formal languages to represent the inferred model of the data.
 
 ## Requirements
 
-Operating System:
+Supported operating systems:
  * GNU/Linux
  * OpenBSD 
  * FreeBSD
  * Mac OS X
- * Windows (experimental)
+ * Windows (using Cygwin)
 
 Software requirements for building from sources:
  * gcc / clang
  * make
  * git
 
-Installation
-Instructions for downloading and compiling the current version in a Debian-based Linux are at the top of this page. There should also be static binary and a Windows-executable in the Downloads section. You only need to have the radamsa binary somewhere to use it, but running $ make install will also copy the manual page and make it usable for other users on the system.
-
 ## Building Radamsa
 ```
  $ git clone https://github.com/aoh/radamsa.git
  $ cd radamsa
  $ make
- $ sudo make install
+ $ sudo make install # optional, you can also just grab bin/radamsa
  $ radamsa --help
 ```
 
-On first build this will also fetch and build owl lisp to compile the Scheme sources to C. This may take a few minutes to complete. If you already have owl, you can build using it by using e.g. $ make OL=/usr/bin/ol.
+Radamsa itself is just a single binary file which has no external dependencies. You can move it where you please and remove the rest.
 
-If the build takes several aeons on your raspberry, you can usually skip a few steps and reduce your C compiler memory load by doing just:
-```
- $ git clone https://github.com/aoh/radamsa.git
- $ cd radamsa
- $ git clone https://github.com/aoh/owl-lisp.git
- $ (cd owl-lisp; make bin/vm)
- $ owl-lisp/bin/vm owl-lisp/fasl/init.fasl -O1 -o radamsa.c rad/main.scm
- $ cc -O2 -o radamsa radamsa.c
- $ echo foo | ./radamsa
- foo
- foo
-``` 
-
-Radamsa itself is just a single standalone binary. You can move it where you please and remove the rest.
-
-## Building Legacy Radamsa 0.1.9
-The 0.1 series of radamsa used a different set of global analysis. While this tool has been used to find dozens of interesting vulnerabilities in the past, we recommend using the newest ones which do similar mutations in sub-linear space. The 0.1 series could take up to 100x the total sample set size of memory and generate data slower than 100Kb/s, while the newer versions work in roughly constant space and generate data an order of magnitude faster.
-
-For small sets of small samples the old one might still be useful. To compile it, use:
-
-```
-$ wget https://ouspg.googlecode.com/files/radamsa-0.1.9.c.gz
-$ gunzip radamsa-0.1.9.gz
-$ gcc -O2 -o radamsa radamsa-0.1.9.c
-$ ./radamsa --help
-```
 
 ## Fuzzing with Radamsa
 
