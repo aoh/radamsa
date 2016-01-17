@@ -1,7 +1,11 @@
-language: C
+language: c
+
+os:
+  - linux
+  - osx
 
 compiler:
- - clang
- - gcc
+  - clang
+  - gcc
 
 script: make
