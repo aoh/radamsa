@@ -279,6 +279,10 @@ CVE-2015-0797 | Mozilla Firefox | OUSPG
 CVE-2015-0813 | Mozilla Firefox | OUSPG
 CVE-2015-1220 | Chrome | OUSPG
 CVE-2015-1224 | Chrome | OUSPG
+CVE-2015-2819 | Sybase SQL    | vah_13 (ERPScan)
+CVE-2015-2820 | SAP Afaria    | vah_13 (ERPScan)
+CVE-2015-8330 | SAP PCo agent | Mathieu GELI (ERPScan)
+CVE-2016-1928 | SAP HANA hdbxsengine |Mathieu Geli (ERPScan)
 
 
 We would like to thank the Chromium project and Mozilla for analyzing, fixing and reporting further many of the above mentioned issues, CERT-FI for feedback and disclosure handling, and other users, projects and vendors who have responsibly taken care of uncovered bugs.
