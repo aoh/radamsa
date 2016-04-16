@@ -248,7 +248,6 @@ Radamsa was written by Aki Helin at OUSPG.")
                    (rs muta (mutators->mutator rs mutas))
                    (sleeper
                     (let ((n (getf dict 'delay)))
-                      (print "DELAY IS " n)
                       (if n (λ () (sleep n)) (λ () 42))))
                    (gen 
                      (generator-priorities->generator rs
