@@ -74,6 +74,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "save metadata about generated files to this file")
               (recursive "-r" "--recursive"
                   comment "include files in subdirectories")
+              (delay "-d" "--delay" cook ,string->natural
+                  comment "sleep for n milliseconds between outputs")
               (list "-l" "--list" comment "list mutations, patterns and generators")
               (verbose "-v" "--verbose" comment "show progress during generation"))))
 
@@ -244,6 +246,10 @@ Radamsa was written by Aki Helin at OUSPG.")
                    (n (getf dict 'count))
                    (mutas (getf dict 'mutations))
                    (rs muta (mutators->mutator rs mutas))
+                   (sleeper
+                    (let ((n (getf dict 'delay)))
+                      (print "DELAY IS " n)
+                      (if n (λ () (sleep n)) (λ () 42))))
                    (gen 
                      (generator-priorities->generator rs
                         (getf dict 'generators) paths fail (getf dict 'count))))
@@ -267,6 +273,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                               (output (pat rs ll muta meta) fd))
                             (meta (put meta 'length n-written)))
                            (record-meta meta)
+                           (sleeper)
                            (loop rs muta pat out (+ p 1)))))))))
 
       (define (radamsa args)
