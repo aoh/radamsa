@@ -3,7 +3,7 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O2
 OFLAGS=-O2
-OWLVERSION=0.1.10
+OWLVERSION=0.1.12
 OWL=owl-lisp-$(OWLVERSION)/bin/vm owl-lisp-$(OWLVERSION)/fasl/init.fasl
 USR_BIN_OL=/usr/bin/ol
 
