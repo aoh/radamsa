@@ -283,8 +283,9 @@ CVE-2015-2819 | Sybase SQL    | vah_13 (ERPScan)
 CVE-2015-2820 | SAP Afaria    | vah_13 (ERPScan)
 CVE-2015-8330 | SAP PCo agent | Mathieu GELI (ERPScan)
 CVE-2016-1928 | SAP HANA hdbxsengine |Mathieu Geli (ERPScan)
-
-
+CVE-2016-3979 | SAP NetWeaver | @ret5et (ERPScan)
+CVE-2016-3980 | SAP NetWeaver | @ret5et (ERPScan)
+CVE-2016-4015 | SAP NetWeaver | @vah_13 (ERPScan)
 We would like to thank the Chromium project and Mozilla for analyzing, fixing and reporting further many of the above mentioned issues, CERT-FI for feedback and disclosure handling, and other users, projects and vendors who have responsibly taken care of uncovered bugs.
 
 ## Thanks
