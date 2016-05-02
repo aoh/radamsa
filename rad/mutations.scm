@@ -426,6 +426,24 @@
          (list->tuple
             (append
                (list ;; some manual ones
+                  (list #xe2 #x80 #xae)  ;; U+202E Right to Left Override
+                  (list #xe1 #xa0 #x8e)  ;; U+180E Mongolian Vowel Separator
+                  (list #xe2 #x81 #xa0)  ;; U+2060 Word Joiner
+                  (list #xef #xbb #xbe)  ;; U+FEFE reserved
+                  (list #xef #xbf #xbf)  ;; U+FFFF not a character
+                  (list #xe0 #xbf #xad)  ;; U+0FED unassigned
+                  (list #xed #xba #xad)  ;; U+DEAD illegal low surrogate
+                  (list #xed #xaa #xad)  ;; U+DAAD illegal high surrogate
+                  (list #xef #xa3 #xbf)  ;; U+F8FF private use char (Apple)
+                  (list #xef #xbc #x8f)  ;; U+FF0F full width solidus
+                  (list #xf0 #x9d #x9f #x96)  ;; U+1D7D6 MATHEMATICAL BOLD DIGIT EIGHT
+                  (list #xc3 #x9f)       ;; U+00DF IDNA deviant
+                  (list #xef #xb7 #xba)  ;; U+FDFD expands by 11x (UTF-8) and 18x (UTF-16) NFKC
+                  (list #xce #x90)       ;; U+0390 expands by 3x (UTF-8) NFD
+                  (list #xe1 #xbe #x82)  ;; U+1F82 expands by 4x (UTF-16) NFD
+                  (list #xef #xac #xac)  ;; U+FB2C expands by 3x (UTF-16) under NFC
+                  (list #xf0 #x9d #x85 #xa0)  ;; U+1D160 expands by 3x (UTF-8) under NFC
+                  (list #xf4 #x8f #xbf #xbe)  ;; illegal outside end of max range U+10FFFF
                   (list 239 191 191)     ;; 65535
                   (list 240 144 128 128) ;; 65536
                   (list #xef #xbb #xbf)  ;; the canonical utf8 bom
