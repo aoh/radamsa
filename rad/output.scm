@@ -12,6 +12,7 @@
 
    (export
       output
+      dummy-output        ;; construct, but don't write
       string->outputs)    ;; str num → ll of output functions | #false
 
    (begin
@@ -21,12 +22,18 @@
          (lets 
             ((ll n (blocks->port ll fd))
              (ok? (and (pair? ll) (tuple? (car ll)))) ;; all written?
-             (state (lfold (λ (last block) block) #false ll)) ;; find the last tuple
+             (state (lfold (λ (prev this) this) #f ll)) ;; find the last tuple
              (rs muta meta state))
             (if (not (eq? fd stdout))
                (close-port fd))
             ;; could warn about write errors
             (values rs muta meta n)))
+
+      (define (dummy-output ll)
+        (lets
+          ((state (lfold (λ (prev this) this) #f ll))
+           (rs muta meta state))
+          (values rs muta meta)))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 

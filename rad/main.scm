@@ -74,6 +74,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "save metadata about generated files to this file")
               (recursive "-r" "--recursive"
                   comment "include files in subdirectories")
+              (offset "-S" "--seek" cook ,string->integer
+                  comment "start from given testcase")
               (delay "-d" "--delay" cook ,string->natural
                   comment "sleep for n milliseconds between outputs")
               (list "-l" "--list" comment "list mutations, patterns and generators")
@@ -214,7 +216,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                   ((os 
                      (string->outputs 
                         (getf dict 'output-pattern)
-                        (getf dict 'count)
+                        (+ (getf dict 'count) (get dict 'offset 0))
                         (pick-suffix paths))))
                   (if os
                      (start-radamsa (put dict 'output os) paths)
@@ -244,6 +246,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                         (getf dict 'verbose)
                         fail))
                    (n (getf dict 'count))
+                   (end (+ n (get dict 'offset 0)))
                    (mutas (getf dict 'mutations))
                    (rs muta (mutators->mutator rs mutas))
                    (sleeper
@@ -251,7 +254,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                       (if n (λ () (sleep n)) (λ () 42))))
                    (gen 
                      (generator-priorities->generator rs
-                        (getf dict 'generators) paths fail (getf dict 'count))))
+                        (getf dict 'generators) paths fail end)))
                   ;; possibly save the seed to metadata
                   (record-meta (put empty 'seed (getf dict 'seed)))
                   (let loop 
@@ -259,11 +262,14 @@ Radamsa was written by Aki Helin at OUSPG.")
                       (muta muta)
                       (pat (getf dict 'patterns))
                       (out (get dict 'output 'bug))
-                      (p 1))
-                     (if (and (number? n) (< n p)) ; n can be 'infinity
-                        (begin
-                           (record-meta 'close)
-                           0)
+                      (offset (get dict 'offset 1))
+                      (p 1) 
+                      (left (if (number? n) n -1)))
+                     (cond
+                      ((= left 0)
+                         (record-meta 'close)
+                         0)
+                      ((eq? offset 1)
                         (lets/cc ret
                            ((rs ll meta (gen rs))
                             (meta (put meta 'nth p))
@@ -273,7 +279,13 @@ Radamsa was written by Aki Helin at OUSPG.")
                             (meta (put meta 'length n-written)))
                            (record-meta meta)
                            (sleeper)
-                           (loop rs muta pat out (+ p 1)))))))))
+                           (loop rs muta pat out 1 (+ p 1) (- left 1))))
+                      (else
+                        (lets 
+                          ((rs ll meta (gen rs))
+                           (meta (put meta 'nth p))
+                           (rs muta meta (dummy-output (pat rs ll muta meta))))
+                          (loop rs muta pat out (- offset 1) (+ p 1) left)))))))))
 
       (define (radamsa args)
          (process-arguments (cdr args) 
