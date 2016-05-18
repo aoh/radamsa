@@ -216,7 +216,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                   ((os 
                      (string->outputs 
                         (getf dict 'output-pattern)
-                        (+ (getf dict 'count) (get dict 'offset 0))
+                        (getf dict 'count)
                         (pick-suffix paths))))
                   (if os
                      (start-radamsa (put dict 'output os) paths)
@@ -246,7 +246,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                         (getf dict 'verbose)
                         fail))
                    (n (getf dict 'count))
-                   (end (+ n (get dict 'offset 0)))
+                   (end (if (number? n) (+ n (get dict 'offset 0)) n))
                    (mutas (getf dict 'mutations))
                    (rs muta (mutators->mutator rs mutas))
                    (sleeper
