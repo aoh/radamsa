@@ -32,7 +32,7 @@
                      #false)))
             (else #f)))
 
-      (define version-str "Radamsa 0.4") ;; aka lazy list
+      (define version-str "Radamsa 0.5")
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 

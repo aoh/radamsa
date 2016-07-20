@@ -50,10 +50,27 @@
                   (else ;; no more numbers
                      (values (cons x ll) n))))))
 
+      (define default-path ".rad")
+      (define default-suffix (cdr (string->list default-path)))
+
+      (define (suffix-char? x) 
+        (not (has? '(#\. #\/ #\\) x)))
+
+      (define (path-suffix path default) 
+        (lets ((hd tl (take-while suffix-char? (reverse (string->list path)))))
+          (if (and (pair? tl) (eq? (car tl) #\.))
+            (reverse hd)
+            default-suffix)))
+
+      (define (source-path meta def)
+        (or (get meta 'source #false) ;; file generator
+            (get meta 'head #false)   ;; jump generator (head -> tail) 
+            def))
+
       (define (file-writer pat suf)
          (define (gen meta)
             (lets 
-               ((path ;; <- could also just regex it there
+               ((path
                   (runes->string
                      (str-foldr
                         (λ (char tl)
@@ -63,7 +80,8 @@
                               ((and (eq? char #\%) (pair? tl))
                                  (case (car tl)
                                     ((#\n) (render (get meta 'nth 0) (cdr tl)))
-                                    ((#\s) (append suf (cdr tl)))
+                                    ((#\s) (append (path-suffix (source-path meta default-path) default-path) (cdr tl)))
+                                    ((#\p) (append suf (cdr tl)))
                                     ((#\0) ;; %0[0-9]+n -> testcase number with padding
                                        (lets
                                           ((tlp pad (get-natural tl))
@@ -86,7 +104,7 @@
                                        (print*-to stderr
                                           (list "Warning: unknown pattern in output path: '" 
                                              (list->string (list char (car tl)))
-                                             "'. Did you mean '%n'?"))
+                                             "'. Did you mean '%n, %s or %p'?"))
                                        (cons char tl))))
                               (else (cons char tl))))
                         null pat)))
