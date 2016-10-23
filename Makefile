@@ -4,7 +4,6 @@ BINDIR=/bin
 CFLAGS=-Wall -O2
 OFLAGS=-O2
 OWL=ol-0.1.13
-OWLSHA=4dc2fe537f9d952d02e3c67564531c0466386b3d353a3
 OWLURL=https://github.com/aoh/owl-lisp/files/449350
 USR_BIN_OL=/usr/bin/ol
 
@@ -35,7 +34,6 @@ bin/radamsa.exe: radamsa.c
 
 $(OWL).c:
 	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
-	sha256sum $(OWL).c.gz | grep -q $(OWLSHA)
 
 bin/ol: $(OWL).c
 	gzip -d < $(OWL).c.gz > $(OWL).c
