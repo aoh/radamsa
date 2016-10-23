@@ -12,6 +12,7 @@
       (owl sys)
       (rad generators)
       (rad output)
+      (rad digest)
       (rad patterns)
       (rad mutations)
       (rad shared))
@@ -230,7 +231,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                 (out (get dict 'output 'bug))
                 (offset (get dict 'offset 1))
                 (p 1) 
-                (cs empty-checksums)
+                (cs empty-digests)
                 (left (if (number? n) n -1)))
                (cond
                 ((= left 0)
@@ -243,7 +244,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                       (out fd meta (out meta))
                       (out-ll (pat rs ll muta meta))
                       (out-lst cs csum (checksummer cs out-ll)))
-                     (if csum
+                     (if csum ; (or 1 csum)  ;; <- todo, check false positive rate via log
                         (lets
                            ((rs muta meta n-written 
                               (output out-lst fd))

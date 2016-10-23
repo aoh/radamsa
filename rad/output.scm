@@ -9,12 +9,12 @@
       (owl iff)
       (owl io)
       (only (owl primop) halt)
+      (rad digest)
       (rad shared))
 
    (export
       output
       checksummer dummy-checksummer
-      empty-checksums
       dummy-output        ;; construct, but don't write
       string->outputs)    ;; str num → ll of output functions | #false
 
@@ -62,21 +62,16 @@
       ;;; Checksum computing and uniqueness filtering
       ;;;
    
-      (define empty-checksums #empty)
-    
-      (define (bytes->int bs)
-         (fold (lambda (n b) (bor (<< n 8) b)) 0 bs))
-      
       ;; force all and compute payload checksum 
       ;; ll -> forced-ll checksum
       (define (checksummer cs ll)
          (lets
             ((lst (force-ll ll))
              (bs (output-stream->byte-stream lst))
-             (csum (bytes->int (sha256-raw bs))))
-            (if (iget cs csum #false)
+             (csum (digest bs)))
+            (if (dget cs csum)
                (values lst cs #false)
-               (values lst (iput cs csum #true) csum))))
+               (values lst (dput cs csum) csum))))
       
       ;; dummy checksum, does not not force stream
       (define (dummy-checksummer cs ll)
