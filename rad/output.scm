@@ -6,6 +6,7 @@
 
    (import
       (owl base)
+      (owl iff)
       (owl io)
       (only (owl primop) halt)
       (rad shared))
@@ -13,6 +14,7 @@
    (export
       output
       checksummer dummy-checksummer
+      empty-checksums
       dummy-output        ;; construct, but don't write
       string->outputs)    ;; str num → ll of output functions | #false
 
@@ -55,17 +57,30 @@
                            (stream-chunk node (- len 1) tl))))
                   tl))
             null lst))
+
+      ;;;
+      ;;; Checksum computing and uniqueness filtering
+      ;;;
+   
+      (define empty-checksums #empty)
+    
+      (define (bytes->int bs)
+         (fold (lambda (n b) (bor (<< n 8) b)) 0 bs))
       
+      ;; force all and compute payload checksum 
       ;; ll -> forced-ll checksum
-      (define (checksummer ll)
+      (define (checksummer cs ll)
          (lets
             ((lst (force-ll ll))
              (bs (output-stream->byte-stream lst))
-             (csum (sha256 bs)))
-            (values lst csum)))
-     
-      (define (dummy-checksummer ll)
-         (values ll #f))
+             (csum (bytes->int (sha256-raw bs))))
+            (if (iget cs csum #false)
+               (values lst cs #false)
+               (values lst (iput cs csum #true) csum))))
+      
+      ;; dummy checksum, does not not force stream
+      (define (dummy-checksummer cs ll)
+         (values ll cs "0"))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 

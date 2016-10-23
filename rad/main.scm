@@ -230,6 +230,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                 (out (get dict 'output 'bug))
                 (offset (get dict 'offset 1))
                 (p 1) 
+                (cs empty-checksums)
                 (left (if (number? n) n -1)))
                (cond
                 ((= left 0)
@@ -241,22 +242,28 @@ Radamsa was written by Aki Helin at OUSPG.")
                       (meta (put meta 'nth p))
                       (out fd meta (out meta))
                       (out-ll (pat rs ll muta meta))
-                      (out-lst csum (checksummer out-ll))
-                      (rs muta meta n-written 
-                        (output out-lst fd))
-                      (meta 
-                         (-> meta
-                            (put 'length n-written)
-                            (put 'checksum csum))))
-                     (record-meta meta)
-                     (sleeper)
-                     (loop rs muta pat out 1 (+ p 1) (- left 1))))
+                      (out-lst cs csum (checksummer cs out-ll)))
+                     (if csum
+                        (lets
+                           ((rs muta meta n-written 
+                              (output out-lst fd))
+                            (meta 
+                               (-> meta
+                                  (put 'length n-written)
+                                  (put 'checksum csum))))
+                           (record-meta meta)
+                           (sleeper)
+                           (loop rs muta pat out 1 (+ p 1) cs (- left 1)))
+                        (lets ((rs muta meta (dummy-output out-lst)))
+                           ;; skip output with checksum match
+                           (loop rs muta pat out 1 p cs left)))))
                 (else
+                  ;; fixme, checksums not in use while fast-forwarding. 
                   (lets 
                     ((rs ll meta (gen rs))
                      (meta (put meta 'nth p))
                      (rs muta meta (dummy-output (pat rs ll muta meta))))
-                    (loop rs muta pat out (- offset 1) (+ p 1) left)))))))
+                    (loop rs muta pat out (- offset 1) (+ p 1) cs left)))))))
   
       ;; dict args → rval
       (define (start-radamsa dict paths)
