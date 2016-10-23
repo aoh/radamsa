@@ -21,15 +21,15 @@
             #false
             (lets ((digit d d))
                (if (null? d)
-                  (get tree d #false)
-                  (dget (get tree d #empty) d)))))
+                  (get tree digit #false)
+                  (dget (get tree digit #empty) d)))))
      
       (define (dput tree d)
          (if (null? (cdr d))
             (put tree (car d) #true)
             (put tree (car d)
                (dput (get tree (car d) #empty) (cdr d)))))
-            
+
       (define (bs->trits bs)
          (if (null? bs)
             null
@@ -46,19 +46,21 @@
       (define (digest ll)
          (lets ((ll (bs->trits ll))
                 (fst ll (uncons ll 0)))
-            (let loop ((ll (bs->trits ll)) (a fst) (sum fst) (len 1) (par fst))
+            (let loop ((ll (bs->trits ll)) (a fst) (sum fst) (len 1) (par fst) (lag 0))
                (cond
                   ((pair? ll)
                      (lets ((b (car ll))
                             (sum _ (fx+ sum b))
                             (len _ (fx+ len 1))
                             (par (fxbxor par b)))
-                        (loop (cdr ll) b sum len par)))
+                        (if (eq? (fxband par 1) 1)
+                           (loop (cdr ll) b sum len par (fxbxor lag par))
+                           (loop (cdr ll) b sum len par lag))))
                   ((null? ll)
                      ;; low -> high entropy
-                     (list len fst a sum par))
+                     (list len fst a sum par lag))
                   (else
-                     (loop (ll) a sum len par))))))))
+                     (loop (ll) a sum len par lag))))))))
          
          
          
