@@ -3,4 +3,5 @@ radamsa.c
 tmp
 bin/radamsa
 bin/radamsa.exe
-owl-lisp-*
+ol-*.c*
+bin/ol
