@@ -3,8 +3,9 @@ PREFIX=/usr
 BINDIR=/bin
 CFLAGS=-Wall -O2
 OFLAGS=-O2
-OWLVERSION=0.1.12
-OWL=owl-lisp-$(OWLVERSION)/bin/vm owl-lisp-$(OWLVERSION)/fasl/init.fasl
+OWL=ol-0.1.13
+OWLSHA=4dc2fe537f9d952d02e3c67564531c0466386b3d353a3
+OWLURL=https://github.com/aoh/owl-lisp/files/449350
 USR_BIN_OL=/usr/bin/ol
 
 W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
@@ -25,16 +26,24 @@ fasl: radamsa.fasl
 	cat radamsa.fasl >> fasl
 	chmod +x fasl
 
-radamsa.fasl: rad/*.scm
-	$(OWL) -o radamsa.fasl rad/main.scm
+radamsa.fasl: rad/*.scm bin/ol
+	bin/ol -o radamsa.fasl rad/main.scm
 
 bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
 	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
-radamsa.c: rad/*.scm
-	make get-owl
-	$(OWL) $(OFLAGS) -o radamsa.c rad/main.scm
+$(OWL).c:
+	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
+	sha256sum $(OWL).c.gz | grep -q $(OWLSHA)
+
+bin/ol: $(OWL).c
+	gzip -d < $(OWL).c.gz > $(OWL).c
+	mkdir -p bin
+	cc -O2 -o bin/ol $(OWL).c
+	
+radamsa.c: rad/*.scm bin/ol
+	bin/ol $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -44,7 +53,7 @@ install: bin/radamsa
 
 clean:
 	-rm radamsa.c bin/radamsa .seal-of-quality
-	-rm -rf owl-lisp-*
+	-rm bin/ol $(OWL).c.gz $(OWL).c
 
 test: .seal-of-quality
 
@@ -52,12 +61,6 @@ test: .seal-of-quality
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 	touch .seal-of-quality
-
-get-owl:
-	# fetching and building owl to build radamsa
-	# this may take a few minutes on first build
-	test -d owl-lisp-$(OWLVERSION) || curl -L https://github.com/aoh/owl-lisp/archive/v$(OWLVERSION).tar.gz | tar -zxvf -
-	cd owl-lisp-$(OWLVERSION) && make bin/vm
 
 # standalone build for shipping
 standalone:
@@ -67,8 +70,8 @@ standalone:
 	diet gcc -DNO_SECCOMP -O3 -Wall -o bin/radamsa radamsa.c
 
 # a quick to compile vanilla bytecode executable
-bytecode:
-	$(OWL) -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
+bytecode: bin/ol
+	bin/ol -O0 -x c -o - rad/main.scm | $(CC) -O2 -x c -o bin/radamsa -
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
 
