@@ -12,6 +12,7 @@
 
    (export
       output
+      checksummer dummy-checksummer
       dummy-output        ;; construct, but don't write
       string->outputs)    ;; str num → ll of output functions | #false
 
@@ -22,18 +23,49 @@
          (lets 
             ((ll n (blocks->port ll fd))
              (ok? (and (pair? ll) (tuple? (car ll)))) ;; all written?
-             (state (lfold (λ (prev this) this) #f ll)) ;; find the last tuple
+             (state (car ll))
              (rs muta meta state))
             (if (not (eq? fd stdout))
                (close-port fd))
             ;; could warn about write errors
             (values rs muta meta n)))
 
+      ;; compute and discard (for fast forwardng)
       (define (dummy-output ll)
         (lets
           ((state (lfold (λ (prev this) this) #f ll))
            (rs muta meta state))
           (values rs muta meta)))
+
+      (define (stream-chunk buff pos tail)
+         (if (eq? pos 0)
+            (cons (refb buff pos) tail)
+            (lets ((next x (fx- pos 1)))
+               (stream-chunk buff next
+                  (cons (refb buff pos) tail)))))
+
+      (define (output-stream->byte-stream lst)
+         (foldr 
+            (lambda (node tl)
+               (if (vector? node)
+                  (lambda ()
+                     (let ((len (vector-length node)))
+                        (if (eq? len 0)
+                           tl
+                           (stream-chunk node (- len 1) tl))))
+                  tl))
+            null lst))
+      
+      ;; ll -> forced-ll checksum
+      (define (checksummer ll)
+         (lets
+            ((lst (force-ll ll))
+             (bs (output-stream->byte-stream lst))
+             (csum (sha256 bs)))
+            (values lst csum)))
+     
+      (define (dummy-checksummer ll)
+         (values ll #f))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 

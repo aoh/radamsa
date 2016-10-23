@@ -32,7 +32,7 @@
                      #false)))
             (else #f)))
 
-      (define version-str "Radamsa 0.5")
+      (define version-str "Radamsa 0.6a")
 
       (define usage-text "Usage: radamsa [arguments] [file ...]")
 
@@ -78,6 +78,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "start from given testcase")
               (delay "-d" "--delay" cook ,string->natural
                   comment "sleep for n milliseconds between outputs")
+              (unique "-u" "--unique" ;; possibly enable by default later + add original
+                  comment "do not generate duplicates")
               (list "-l" "--list" comment "list mutations, patterns and generators")
               (verbose "-v" "--verbose" comment "show progress during generation"))))
 
@@ -94,7 +96,9 @@ Radamsa was written by Aki Helin at OUSPG.")
 
       ;; () → string (decimal number)
       (define (time-seed)
-         (time-ms))
+         (fold 
+            (lambda (n b) (bor (<< n 8) b))
+            0 (sha256-bytes (str (time-ms)))))
 
       (define (show-options)
          (print "Mutations (-m)")
@@ -195,7 +199,65 @@ Radamsa was written by Aki Helin at OUSPG.")
                   ((null? cs) (string->list "data"))
                   ((eq? (car cs) #\.) out)
                   (else (loop (cdr cs) (cons (car cs) out)))))))
-         
+
+      (define (run-radamsa dict paths)
+         (lets/cc ret
+            ((fail (λ (why) (print why) (ret 1)))
+             (rs (seed->rands (getf dict 'seed)))
+             (record-meta 
+               (maybe-meta-logger 
+                  (getf dict 'metadata)
+                  (getf dict 'verbose)
+                  fail))
+             (n (getf dict 'count))
+             (end (if (number? n) (+ n (get dict 'offset 0)) n))
+             (mutas (getf dict 'mutations))
+             (checksummer 
+                (if (getf dict 'unique) checksummer dummy-checksummer))
+             (rs muta (mutators->mutator rs mutas))
+             (sleeper
+              (let ((n (getf dict 'delay)))
+                (if n (λ () (sleep n)) (λ () 42))))
+             (gen 
+               (generator-priorities->generator rs
+                  (getf dict 'generators) paths fail end)))
+            ;; possibly save the seed to metadata
+            (record-meta (put empty 'seed (getf dict 'seed)))
+            (let loop 
+               ((rs rs)
+                (muta muta)
+                (pat (getf dict 'patterns))
+                (out (get dict 'output 'bug))
+                (offset (get dict 'offset 1))
+                (p 1) 
+                (left (if (number? n) n -1)))
+               (cond
+                ((= left 0)
+                   (record-meta 'close)
+                   0)
+                ((eq? offset 1)
+                  (lets/cc ret
+                     ((rs ll meta (gen rs))
+                      (meta (put meta 'nth p))
+                      (out fd meta (out meta))
+                      (out-ll (pat rs ll muta meta))
+                      (out-lst csum (checksummer out-ll))
+                      (rs muta meta n-written 
+                        (output out-lst fd))
+                      (meta 
+                         (-> meta
+                            (put 'length n-written)
+                            (put 'checksum csum))))
+                     (record-meta meta)
+                     (sleeper)
+                     (loop rs muta pat out 1 (+ p 1) (- left 1))))
+                (else
+                  (lets 
+                    ((rs ll meta (gen rs))
+                     (meta (put meta 'nth p))
+                     (rs muta meta (dummy-output (pat rs ll muta meta))))
+                    (loop rs muta pat out (- offset 1) (+ p 1) left)))))))
+  
       ;; dict args → rval
       (define (start-radamsa dict paths)
          ;; show command line stuff
@@ -237,55 +299,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                      (start-radamsa (del dict 'recursive) paths)
                      2)))
             (else
-               (lets/cc ret
-                  ((fail (λ (why) (print why) (ret 1)))
-                   (rs (seed->rands (getf dict 'seed)))
-                   (record-meta 
-                     (maybe-meta-logger 
-                        (getf dict 'metadata)
-                        (getf dict 'verbose)
-                        fail))
-                   (n (getf dict 'count))
-                   (end (if (number? n) (+ n (get dict 'offset 0)) n))
-                   (mutas (getf dict 'mutations))
-                   (rs muta (mutators->mutator rs mutas))
-                   (sleeper
-                    (let ((n (getf dict 'delay)))
-                      (if n (λ () (sleep n)) (λ () 42))))
-                   (gen 
-                     (generator-priorities->generator rs
-                        (getf dict 'generators) paths fail end)))
-                  ;; possibly save the seed to metadata
-                  (record-meta (put empty 'seed (getf dict 'seed)))
-                  (let loop 
-                     ((rs rs)
-                      (muta muta)
-                      (pat (getf dict 'patterns))
-                      (out (get dict 'output 'bug))
-                      (offset (get dict 'offset 1))
-                      (p 1) 
-                      (left (if (number? n) n -1)))
-                     (cond
-                      ((= left 0)
-                         (record-meta 'close)
-                         0)
-                      ((eq? offset 1)
-                        (lets/cc ret
-                           ((rs ll meta (gen rs))
-                            (meta (put meta 'nth p))
-                            (out fd meta (out meta))
-                            (rs muta meta n-written 
-                              (output (pat rs ll muta meta) fd))
-                            (meta (put meta 'length n-written)))
-                           (record-meta meta)
-                           (sleeper)
-                           (loop rs muta pat out 1 (+ p 1) (- left 1))))
-                      (else
-                        (lets 
-                          ((rs ll meta (gen rs))
-                           (meta (put meta 'nth p))
-                           (rs muta meta (dummy-output (pat rs ll muta meta))))
-                          (loop rs muta pat out (- offset 1) (+ p 1) left)))))))))
+               (run-radamsa dict paths))))
 
       (define (radamsa args)
          (process-arguments (cdr args) 
