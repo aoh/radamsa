@@ -29,14 +29,7 @@
             tail))
 
       (define (finish rs len)
-         (lets ((rs n (rand rs (+ len 1)))) ;; 1/(n+1) probability of possibly adding extra data
-            (if (eq? n 0)
-               (lets
-                  ((rs bits (rand-range rs 1 16))
-                   (rs len (rand rs (<< 1 bits)))
-                   (rs bytes (random-numbers rs 256 len)))
-                  (list (list->byte-vector bytes)))
-               null)))
+         null)
 
       ;; store length so that extra data can be generated in case of no or very 
       ;; little sample data, which would cause one or very few possible outputs
@@ -99,7 +92,7 @@
                (pair b (random-stream rs)))))
       
       (define (random-generator rs)
-         (lets ((rs seed (rand rs 1111111111111111111111111111111111111)))
+         (lets ((rs seed (rand rs #x1000000000000000000)))
             (values rs 
                (random-stream (seed->rands seed))
                (put empty 'generator 'random))))
