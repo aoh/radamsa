@@ -8,8 +8,6 @@ OWL=ol-0.1.13
 OWLURL=https://github.com/aoh/owl-lisp/files/449350
 USR_BIN_OL=/usr/bin/ol
 
-W32GCC=i586-mingw32msvc-gcc # sudo apt-get install mingw32 @ debian squeeze
-
 everything: bin/radamsa
 
 build_radamsa:
@@ -22,17 +20,12 @@ bin/radamsa: radamsa.c
 	mkdir -p bin
 	$(CC) $(CFLAGS) $(LDFLAGS) -o bin/radamsa radamsa.c
 
-fasl: radamsa.fasl
-	echo "#!/usr/bin/owl-vm" > fasl
-	cat radamsa.fasl >> fasl
-	chmod +x fasl
+radamsa.c: rad/*.scm
+	test -x bin/ol || make bin/ol
+	bin/ol $(OFLAGS) -o radamsa.c rad/main.scm
 
 radamsa.fasl: rad/*.scm bin/ol
 	bin/ol -o radamsa.fasl rad/main.scm
-
-bin/radamsa.exe: radamsa.c
-	which $(W32GCC)
-	$(W32GCC) $(CFLAGS) $(LDFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
 $(OWL).c:
 	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
@@ -41,9 +34,6 @@ bin/ol: $(OWL).c
 	gzip -d < $(OWL).c.gz > $(OWL).c
 	mkdir -p bin
 	cc -O2 -o bin/ol $(OWL).c
-	
-radamsa.c: rad/*.scm bin/ol
-	bin/ol $(OFLAGS) -o radamsa.c rad/main.scm
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
