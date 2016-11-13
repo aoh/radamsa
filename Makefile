@@ -1,7 +1,8 @@
 DESTDIR=
 PREFIX=/usr
 BINDIR=/bin
-CFLAGS=-Wall -O2
+CFLAGS?=-Wall -O2
+LDFLAGS?=
 OFLAGS=-O2
 OWL=ol-0.1.13
 OWLURL=https://github.com/aoh/owl-lisp/files/449350
@@ -15,11 +16,11 @@ build_radamsa:
 	test -x $(USR_BIN_OL)
 	$(USR_BIN_OL) $(OFLAGS) -o radamsa.c rad/main.scm
 	mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o bin/radamsa radamsa.c
 
 bin/radamsa: radamsa.c
 	mkdir -p bin
-	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o bin/radamsa radamsa.c
 
 fasl: radamsa.fasl
 	echo "#!/usr/bin/owl-vm" > fasl
@@ -31,7 +32,7 @@ radamsa.fasl: rad/*.scm bin/ol
 
 bin/radamsa.exe: radamsa.c
 	which $(W32GCC)
-	$(W32GCC) $(CFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
+	$(W32GCC) $(CFLAGS) $(LDFLAGS) -o bin/radamsa.exe radamsa.c -lwsock32
 
 $(OWL).c:
 	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
