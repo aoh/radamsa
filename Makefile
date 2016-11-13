@@ -14,7 +14,8 @@ everything: bin/radamsa
 build_radamsa:
 	test -x $(USR_BIN_OL)
 	$(USR_BIN_OL) $(OFLAGS) -o radamsa.c rad/main.scm
-	make bin/radamsa 
+	mkdir -p bin
+	$(CC) $(CFLAGS) -o bin/radamsa radamsa.c
 
 bin/radamsa: radamsa.c
 	mkdir -p bin
