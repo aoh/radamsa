@@ -79,9 +79,9 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "start from given testcase")
               (delay "-d" "--delay" cook ,string->natural
                   comment "sleep for n milliseconds between outputs")
-              (unique "-u" "--unique" ;; possibly enable by default later + add original
-                  comment "do not generate duplicates")
               (list "-l" "--list" comment "list mutations, patterns and generators")
+              (csums "-C" "--checksums" has-arg default "10000" cook ,string->natural
+                    comment "maximum number of checksums in uniqueness filter (0 disables)")
               (verbose "-v" "--verbose" comment "show progress during generation"))))
 
       ;; () → string
@@ -214,7 +214,7 @@ Radamsa was written by Aki Helin at OUSPG.")
              (end (if (number? n) (+ n (get dict 'offset 0)) n))
              (mutas (getf dict 'mutations))
              (checksummer 
-                (if (getf dict 'unique) checksummer dummy-checksummer))
+                (if (eq? 0 (getf dict 'csums)) dummy-checksummer checksummer))
              (rs muta (mutators->mutator rs mutas))
              (sleeper
               (let ((n (getf dict 'delay)))
@@ -231,7 +231,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                 (out (get dict 'output 'bug))
                 (offset (get dict 'offset 1))
                 (p 1) 
-                (cs empty-digests)
+                (cs (empty-digests (getf dict 'csums)))
                 (left (if (number? n) n -1)))
                (cond
                 ((= left 0)
