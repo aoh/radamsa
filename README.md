@@ -271,8 +271,10 @@ CVE-2013-1691 | Mozilla Firefox | OUSPG
 CVE-2013-1708 | Mozilla Firefox | OUSPG
 CVE-2013-4082 | Wireshark | found by cons0ul
 CVE-2013-1732 | Mozilla Firefox | OUSPG
+CVE-2014-0526 | Adobe Reader X/XI | Pedro Ribeiro (pedrib@gmail.com)
 CVE-2014-3669 | PHP
 CVE-2014-3668 | PHP
+CVE-2014-8449 | Adobe Reader X/XI | Pedro Ribeiro (pedrib@gmail.com)
 CVE-2014-3707 | cURL | Symeon Paraschoudis
 CVE-2014-7933 | Chrome | OUSPG
 CVE-2015-0797 | Mozilla Firefox | OUSPG
@@ -281,6 +283,7 @@ CVE-2015-1220 | Chrome | OUSPG
 CVE-2015-1224 | Chrome | OUSPG
 CVE-2015-2819 | Sybase SQL    | vah_13 (ERPScan)
 CVE-2015-2820 | SAP Afaria    | vah_13 (ERPScan)
+CVE-2015-7091 | Apple QuickTime |  Pedro Ribeiro (pedrib@gmail.com)
 CVE-2015-8330 | SAP PCo agent | Mathieu GELI (ERPScan)
 CVE-2016-1928 | SAP HANA hdbxsengine |Mathieu Geli (ERPScan)
 CVE-2016-3979 | SAP NetWeaver | @ret5et (ERPScan)
