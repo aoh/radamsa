@@ -13,40 +13,40 @@ This program follows the usual GNU command line syntax, with long
 options starting with two dashes (`-').
 A summary of options is included below.
 .TP
-.B \-h, \-\-help
+.BR \-h ", " \-\-help
 Show a shorter summary of options.
 .TP
-.B \-V, \-\-version
+.BR \-V ", " \-\-version
 Show program version.
 .TP
-.B \-o, \-\-output pattern
+.BR \-o ", " \-\-output " \fIpattern"
 Specify where to write the modified data. By default the data is written to standard output. The pattern can be a path, in which %n is filled to be the test case number if present, :n to have the data sent to TCP clients connecting to local port n, or a.b.c.d:n to have radamsa connect to port n of IPv4 address a.b.c.d to send each output.
 .TP
-.B \-n, \-\-count n
+.BR \-n ", " \-\-count " \fIn"
 How many outputs to generate based on the sample(s). Giving -1 or inf causes data to be generated forever. The default is 1.
 .TP
-.B \-s, \-\-seed n
+.BR \-s ", " \-\-seed " \fIn"
 Start from random state n, which is a decimal number. Starting from the same random state with the same command line arguments and samples causes the same outputs to be generated. If no seed is given explicitly radamsa reads a random one from /dev/urandom or takes the current time in milliseconds.
 .TP
-.B \-M, \-\-meta path
+.BR \-M ", " \-\-meta " \fIpath"
 Write metadata about generated data to given path. - can be used to have the metadata written to standard output. The metadata contains the seed followed by one line per testcase.
 .TP
-.B \-l, \-\-list
+.BR \-l ", " \-\-list
 Show all available mutations, patterns and generators along with their descriptions.
 .TP
-.B \-r, \-\-recursive
+.BR \-r ", " \-\-recursive
 Include samples from directories recursively.
 .TP
-.B \-v, \-\-verbose
+.BR \-v ", " \-\-verbose
 Print what is being done.
 .TP
-.B \-m, \-\-mutations string
+.BR \-m ", " \-\-mutations " \fIstring"
 Request the initial mutation probabilities manually. This is generally not recommended and the options will change in the future versions.
 .TP
-.B \-p, \-\-patterns string
+.BR \-p ", " \-\-patterns " \fIstring"
 Request the mutation patterns manually. This is generally not recommended and the options will change in the future versions.
 .TP
-.B \-g, \-\-generators string
+.BR \-g ", " \-\-generators " \fIstring"
 Request the data stream generator probabilities manually. This is generally not recommended and the options will change in the future versions.
 .SH EXAMPLES
  $ cat file | radamsa | program -
