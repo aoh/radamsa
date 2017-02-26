@@ -29,9 +29,9 @@ radamsa.fasl: rad/*.scm bin/ol
 
 $(OWL).c:
 	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
+	gzip -d < $(OWL).c.gz > $(OWL).c
 
 bin/ol: $(OWL).c
-	gzip -d < $(OWL).c.gz > $(OWL).c
 	mkdir -p bin
 	cc -O2 -o bin/ol $(OWL).c
 
