@@ -216,6 +216,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   ((eq? (car cs) #\.) out)
                   (else (loop (cdr cs) (cons (car cs) out)))))))
 
+      (define K (λ (a b) a))
+      
       (define (run-radamsa dict paths)
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
@@ -256,15 +258,15 @@ Radamsa was written by Aki Helin at OUSPG.")
                   (lets/cc ret
                      ((rs ll meta (gen rs))
                       (meta (put meta 'nth p))
-                      (out fd meta (out meta))
                       (out-ll (pat rs ll muta meta))
                       (out-lst cs csum (checksummer cs out-ll)))
                      (if csum 
                         (lets
-                           ((rs muta meta n-written 
+                           ((out fd meta (out meta))
+                            (rs muta generation-meta n-written 
                               (output out-lst fd))
                             (meta 
-                               (-> meta
+                               (-> (ff-union meta generation-meta K)
                                   (put 'length n-written)
                                   (put 'checksum csum))))
                            (record-meta meta)
