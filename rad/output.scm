@@ -25,7 +25,7 @@
          (lets 
             ((ll n (blocks->port ll fd))
              (ok? (and (pair? ll) (tuple? (car ll)))) ;; all written?
-             (state (car ll))
+             (state (llast ll))
              (rs muta meta state))
             (if (not (eq? fd stdout))
                (close-port fd))
