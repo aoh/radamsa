@@ -120,7 +120,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                (render n (render (car u) null))
                (verb (div n 1024) (cdr u))))
          (list->string
-            (verb n '("" "K" "M" "T" "P"))))
+            (verb n '("b" "K" "M" "T" "P"))))
 
       (define (serialize-meta val)
          (if (ff? val)
@@ -135,6 +135,21 @@ Radamsa was written by Aki Helin at OUSPG.")
                               (ilist #\, #\space out))))))
                null val)))
 
+      (define (verbose-target meta)
+         (cond
+            ((getf meta 'path) =>
+               (λ (path) path))
+            ((eq? 'tcp-client (getf meta 'output))
+               (str
+                  (get meta 'ip '?) ":" (get meta 'port '?) "/" 
+                  (get meta 'nth 0)))
+            ((eq? 'tcp-server (getf meta 'output))
+               (str ":" (get meta 'port '?) "/" 
+                  (get meta 'nth 0)
+                  " <- " (get meta 'ip "???")))
+            (else 
+               (str (get meta 'nth 0)))))
+      
       ;; ... → (ff | seed | 'close → ...)
       (define (maybe-meta-logger path verbose? fail)
          (define verb 
@@ -146,7 +161,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                         (λ (seed) (print*-to stderr (list "Random seed: " seed))))
                      (else
                         (print*-to stderr 
-                           (list " - " (or (getf x 'path) (get x 'ip "output")) 
+                           (list " - " (verbose-target x)
                               ": " (verbose-size (get x 'length 0)))))))
                (λ (x) x)))
          (cond
@@ -244,7 +259,7 @@ Radamsa was written by Aki Helin at OUSPG.")
                       (out fd meta (out meta))
                       (out-ll (pat rs ll muta meta))
                       (out-lst cs csum (checksummer cs out-ll)))
-                     (if csum ; (or 1 csum)  ;; <- todo, check false positive rate via log
+                     (if csum 
                         (lets
                            ((rs muta meta n-written 
                               (output out-lst fd))

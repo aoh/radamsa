@@ -206,13 +206,16 @@
             (else
                (next-client (ll)))))
 
-      (define (tcp-server ll)
+      (define (tcp-server ll port)
          (λ (meta)
             (lets ((ip fd ll (next-client ll)))
                (values
-                  (tcp-server ll)
+                  (tcp-server ll port)
                   fd
-                  (put (put meta 'output 'tcp-server) 'ip (ip->string ip))))))
+                  (-> meta
+                     (put 'port port)
+                     (put 'output 'tcp-server)
+                     (put 'ip (ip->string ip)))))))
 
       ;; o n → (out :: → out' fd meta) v null | #false, where os is string from -o, and n is number from -n
       (define (string->outputs str n suf)
@@ -224,7 +227,7 @@
                   (if (and (number? port) (< port 65536))
                      (let ((clis (tcp-clients port)))
                         (if clis
-                           (tcp-server clis)
+                           (tcp-server clis port)
                            (begin
                               (print "Couldn't bind to local port " port)
                               #false)))
