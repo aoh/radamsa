@@ -222,32 +222,46 @@
          (cond
             ((equal? str "-") ;; conventional way to ask for standard output (and input)
                stdout-stream)
-            ((m/^:[0-9]+$/ str)
-               (let ((port (string->number (s/:// str) 10)))
-                  (if (and (number? port) (< port 65536))
-                     (let ((clis (tcp-clients port)))
-                        (if clis
-                           (tcp-server clis port)
-                           (begin
-                              (print "Couldn't bind to local port " port)
-                              #false)))
-                     (begin   
-                        (print-to stderr "Invalid port: " port)
-                        #false))))
-            ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+$/ str)
+            ((m/^:[0-9]+(\/(tcp|udp))?$/ str) ;; server mode network output, currently tcp only
                (lets
-                  ((ip+port (c/:/ str))
+                   ((udp? (m/udp/ str))
+                    (str (s/\/[a-z]+$// str)) ;; drop protocol info if there
+                    (port (string->number (s/:// str) 10)))
+                  (cond
+                     ((not (and (number? port) (< port 65536)))
+                        (print-to stderr "Invalid port: " port)
+                        (print-to stderr "Port should be an integer below 65536")
+                        #false)
+                     (udp?
+                        (print-to stderr "UDP server mode requested")
+                        #false)
+                     (else
+                        (let ((clis (tcp-clients port)))
+                           (if clis
+                              (tcp-server clis port)
+                              (begin
+                                 (print "Couldn't bind to local port " port)
+                                 #false)))))))
+            ((m/^[0-9]{1,3}(\.[0-9]{1,3}){3}:[0-9]+(\/(tcp|udp))?$/ str) ;; client mode network output
+               (lets
+                  ((udp? (m/udp/ str))
+                   (ip+port (c/:/ (s/\/[a-z]+$// str)))
                    (port (string->number (cadr ip+port) 10))
                    (ss (c/\./ (car ip+port)))
                    (bs (map (λ (x) (string->number x 10)) ss)))
-                  (if (and (all number? bs) 
-                           (all (λ (x) (< x 256)) bs)
-                           (number? port)
-                           (< port 65536))
-                     (tcp-client (list->vector bs) port)
-                     (begin
+                  (cond
+                     ((not (and (all number? bs) 
+                                (all (λ (x) (< x 256)) bs)
+                                (number? port)
+                                (< port 65536)))
                         (print-to stderr "Not a valid target: " str)
-                        #false))))
+                        (print-to stderr "Target should be of the form 192.168.0.1:123 with optional /tcp or /udp suffix")
+                        #false)
+                     (udp?
+                        (print-to stderr "UDP client mode requested.")
+                        #false)
+                     (else
+                        (tcp-client (list->vector bs) port)))))
             ((and (> n 1) (not (m/%(0[1-9][0-9]*)?n/ str)))
                (print-to stderr "Refusing to overwrite file '" str "' many times. You should add %n or %0[padding]n to the path.")
                #false)

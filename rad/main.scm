@@ -42,9 +42,9 @@
 "Radamsa is a general purpose fuzzer. It modifies given sample data 
 in ways, which might expose errors in programs intended to process 
 the data. For more information, read the fine manual page, or visit
-visit https://github.com/aoh/radamsa.
+https://github.com/aoh/radamsa.
 
-Radamsa was written by Aki Helin at OUSPG.")
+Radamsa was written by Aki Helin, initially at OUSPG.")
 
       (define (string->natural str)
          (let ((i (string->integer str)))
@@ -58,7 +58,7 @@ Radamsa was written by Aki Helin at OUSPG.")
               (about "-a" "--about" comment "what is this thing?")
               (version "-V" "--version" comment "show program version")
               (output-pattern "-o" "--output" has-arg default "-" cook ,(λ (x) x)
-                  comment "output pattern, e.g. out.bin /tmp/fuzz-%n.%s, -, :80 or 127.0.0.1:80")
+                  comment "output pattern, e.g. out.bin /tmp/fuzz-%n.%s, -, :80 or 127.0.0.1:80 or 127.0.0.1:123/udp")
               (count "-n" "--count" cook ,string->count
                   default "1" comment "how many outputs to generate (number or inf)")
               (seed "-s" "--seed" cook ,string->natural comment "random seed (number, default random)")
@@ -77,6 +77,8 @@ Radamsa was written by Aki Helin at OUSPG.")
                   comment "include files in subdirectories")
               (offset "-S" "--seek" cook ,string->integer
                   comment "start from given testcase")
+              (truncate "-T" "--truncate" cook ,string->integer
+                  comment "take only first n bytes of each output (mainly intended for UDP)")
               (delay "-d" "--delay" cook ,string->natural
                   comment "sleep for n milliseconds between outputs")
               (list "-l" "--list" comment "list mutations, patterns and generators")
