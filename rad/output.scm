@@ -21,10 +21,11 @@
    (begin
 
       ;; output :: (ll' ++ (#(rs mutator meta))) fd → rs mutator meta (n-written | #f), handles port closing &/| flushing
-      (define (output ll fd)
+      (define (output-to-fd ll fd)
          (lets 
             ((ll n (blocks->port ll fd))
              (ok? (and (pair? ll) (tuple? (car ll)))) ;; all written?
+             (lst (force-ll ll))
              (state (llast ll))
              (rs muta meta state))
             (if (not (eq? fd stdout))
@@ -32,6 +33,36 @@
             ;; could warn about write errors
             (values rs muta meta n)))
 
+      (define (output ll x)
+         (tuple-case x
+            ((udp ip port sock)
+               (lets 
+                  ((rlst (reverse (force-ll ll)))
+                   (state (car rlst))
+                   ;(real-data (foldr append null (map vector->list (keep vector? (force-ll ll)))))
+                   (len (foldr + 0 (map vector-length (cdr rlst))))
+                   (data 
+                      (fold ;; left to right fold, because reverse
+                         (λ (tail block)
+                            (vec-foldr cons tail block))
+                         null (cdr rlst)))
+                   (rs muta meta state))
+                  ;(if (not (equal? data real-data)) (error "data mismatch"))
+                  (if (> len 65535)
+                     ;; definitely too large for a single packet
+                     (values rs muta meta 0)
+                     (lets ((buffer (list->byte-vector data)))
+                        (cond
+                           ((send-udp-packet sock ip port buffer)
+                              (values rs muta meta 
+                                 (vector-length buffer)))
+                           (else
+                              ;; likely packet size exceeded, so log it as a negative number for debugging
+                              (values rs muta meta 
+                                 (- 0 (vector-length buffer)))))))))
+            (else
+               (output-to-fd ll x))))
+            
       ;; compute and discard (for fast forwardng)
       (define (dummy-output ll)
         (lets
@@ -217,6 +248,26 @@
                      (put 'output 'tcp-server)
                      (put 'ip (ip->string ip)))))))
 
+      ;;; 
+      ;;; UDP client
+      ;;; 
+
+      (define (make-udp-client ip port)
+         (lets 
+            ((sock (open-udp-socket 0))
+             (node (tuple 'udp ip port sock)))
+            (if sock
+               (let loop ()
+                  (λ (meta)
+                     (values (loop) node
+                        (-> meta
+                           (put 'port port)
+                           (put 'output 'udp-client)
+                           (put 'ip ip)))))
+               (begin
+                  (print-to stderr "Failed to created UDP socket")
+                  #false))))
+      
       ;; o n → (out :: → out' fd meta) v null | #false, where os is string from -o, and n is number from -n
       (define (string->outputs str n suf)
          (cond
@@ -258,8 +309,8 @@
                         (print-to stderr "Target should be of the form 192.168.0.1:123 with optional /tcp or /udp suffix")
                         #false)
                      (udp?
-                        (print-to stderr "UDP client mode requested.")
-                        #false)
+                        ;; note: broadcast not currently enabled in socket creation, so no need to check for it here
+                        (make-udp-client (list->vector bs) port))
                      (else
                         (tcp-client (list->vector bs) port)))))
             ((and (> n 1) (not (m/%(0[1-9][0-9]*)?n/ str)))
