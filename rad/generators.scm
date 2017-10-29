@@ -14,6 +14,7 @@
    (export 
       string->generator-priorities         ;; done at cl args parsing time
       generator-priorities->generator      ;; done after cl args
+      stream-port
       )
 
    (begin
