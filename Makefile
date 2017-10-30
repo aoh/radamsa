@@ -30,10 +30,15 @@ radamsa.fasl: rad/*.scm bin/ol
 $(OWL).c:
 	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
 	gzip -d < $(OWL).c.gz > $(OWL).c
-
+	
 bin/ol: $(OWL).c
 	mkdir -p bin
-	cc -O2 -o bin/ol $(OWL).c
+	#cc -O2 -o bin/ol $(OWL).c
+	# temporarily use develop branch of owl until next release
+	test -d owl-lisp || git clone https://github.com/aoh/owl-lisp.git
+	cd owl-lisp && git checkout develop
+	cd owl-lisp && make bin/ol
+	cp owl-lisp/bin/ol bin/ol
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin
@@ -42,6 +47,7 @@ install: bin/radamsa
 	cat doc/radamsa.1 | gzip -9 > $(DESTDIR)$(PREFIX)/share/man/man1/radamsa.1.gz
 
 clean:
+	-rm -rf owl-lisp
 	-rm radamsa.c bin/radamsa .seal-of-quality
 	-rm bin/ol $(OWL).c.gz $(OWL).c
 
