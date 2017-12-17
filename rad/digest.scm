@@ -5,11 +5,13 @@
    (import
       (owl base)
       (owl lazy)
+      (owl codec)
       (owl digest)) ;; sha256-raw ll → (fixnum ...)
    
    (export
       string->hash    ;; used for command line argument
       empty-digests
+      bytes->trits
       dget            ;; digests digest -> bool
       dput            ;; digests digest -> digests
       digest)
@@ -118,10 +120,25 @@
             res                   ;; correct 
             (str res)))) ;; →  trits->hex
 
+   (define (bytes->trits lst)
+      (let loop ((lst lst) (trit 0) (n 0))
+         (cond
+            ((null? lst)
+               (if (eq? n 0)
+                  null
+                  (list trit)))
+            ((eq? n 3)
+               (cons trit (loop lst 0 0)))
+            (else
+               (loop (cdr lst)
+                  (bor (<< trit 8) (car lst))
+                  (+ n 1))))))
+               
    (define (hash-sha256 lst)
-      (values
-         (sha256-bytes lst) ;; → raw
-         (sha256 lst)))     ;; → raw to hex
+      (let ((bs (sha256-bytes lst)))
+         (values 
+            (bytes->trits bs)
+            (hex-encode-list bs))))
       
    (define (string->hash s)
       (cond
