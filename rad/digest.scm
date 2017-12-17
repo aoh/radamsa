@@ -4,9 +4,11 @@
    
    (import
       (owl base)
-      (owl lazy))
+      (owl lazy)
+      (owl digest)) ;; sha256-raw ll → (fixnum ...)
    
    (export
+      string->hash    ;; used for command line argument
       empty-digests
       dget            ;; digests digest -> bool
       dput            ;; digests digest -> digests
@@ -110,27 +112,24 @@
                            (lets ((sum par (pollinate sum par)))
                               (loop ll b sum len par lag))))))))
 
-   (define (inc lst)
-      (cond
-         ((null? lst)
-            (list 0))
-         ((not (pair? lst))
-            (inc (lst)))
-         ((eq? (car lst) 255)
-            (pair 0 (inc (cdr lst))))
-         (else
-            (pair (+ (car lst) 1) (cdr lst)))))
+   (define (hash-stream ll)
+      (let ((res (digest ll)))
+         (values 
+            res                   ;; correct 
+            (str res)))) ;; →  trits->hex
 
-   '(let loop ((lst null) (ds empty-digests) (n 0) (colls 0))
-      (let ((dig (digest lst)))
-         (if (eq? (band n #xfff) 0)
-            (print colls "/" n " collisions, dig " lst " = " dig))
-         (cond
-            ((dget ds dig)
-               (print "Collision: " lst " -> " dig ", collisions " colls "/" n)
-               (loop (inc lst) ds (+ n 1) (+ colls 1)))
-            (else
-               (loop (inc lst) (dput ds dig) (+ n 1) colls)))))
+   (define (hash-sha256 lst)
+      (values
+         (sha256-bytes lst) ;; → raw
+         (sha256 lst)))     ;; → raw to hex
+      
+   (define (string->hash s)
+      (cond
+         ((string-ci=? s "stream") hash-stream)
+         ((string-ci=? s "sha256") hash-sha256)
+         ((string-ci=? s "sha") hash-sha256)
+         (else #f)))
+   
       
 ))
          

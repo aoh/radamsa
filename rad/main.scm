@@ -52,6 +52,8 @@ Radamsa was written by Aki Helin, initially at OUSPG.")
                i
                #false)))
 
+      
+               
       (define command-line-rules
          (cl-rules
             `((help "-h" "--help" comment "show this thing")
@@ -84,6 +86,8 @@ Radamsa was written by Aki Helin, initially at OUSPG.")
               (list "-l" "--list" comment "list mutations, patterns and generators")
               (csums "-C" "--checksums" has-arg default "10000" cook ,string->natural
                     comment "maximum number of checksums in uniqueness filter (0 disables)")
+              (hash "-H" "--hash" cook ,string->hash default "stream"
+                    comment "hash algorithm for uniqueness checks (stream or sha256)")
               (verbose "-v" "--verbose" comment "show progress during generation"))))
 
       ;; () → string
@@ -232,8 +236,10 @@ Radamsa was written by Aki Helin, initially at OUSPG.")
              (n (getf dict 'count))
              (end (if (number? n) (+ n (get dict 'offset 0)) n))
              (mutas (getf dict 'mutations))
+             (hash (getf dict 'hash))
              (checksummer 
-                (if (eq? 0 (getf dict 'csums)) dummy-checksummer checksummer))
+                ((if (eq? 0 (getf dict 'csums)) dummy-checksummer checksummer)
+                   hash))
              (rs muta (mutators->mutator rs mutas))
              (sleeper
               (let ((n (getf dict 'delay)))

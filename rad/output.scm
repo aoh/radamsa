@@ -95,18 +95,20 @@
    
       ;; force all and compute payload checksum 
       ;; ll -> forced-ll checksum
-      (define (checksummer cs ll)
-         (lets
-            ((lst (force-ll ll))
-             (bs (output-stream->byte-stream lst))
-             (csum (digest bs)))
-            (if (dget cs csum)
-               (values lst cs #false)
-               (values lst (dput cs csum) csum))))
+      (define (checksummer hash)
+         (λ (cs ll)
+            (lets
+               ((lst (force-ll ll))
+                (bs (output-stream->byte-stream lst))
+                (csum-trits csum-string (hash bs)))
+               (if (dget cs csum-trits)
+                  (values lst cs #false)
+                  (values lst (dput cs csum-trits) csum-string)))))
       
       ;; dummy checksum, does not not force stream
-      (define (dummy-checksummer cs ll)
-         (values ll cs "0"))
+      (define (dummy-checksummer hash)
+         (λ (cs ll)
+            (values ll cs "n/a")))
 
       (define (stdout-stream meta)
          (values stdout-stream stdout 
