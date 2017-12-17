@@ -427,6 +427,7 @@
             (append
                (list ;; some manual ones
                   (list #xe2 #x80 #xae)  ;; U+202E Right to Left Override
+                  (list #xe2 #x80 #xad)  ;; U+202D Left to Right Override
                   (list #xe1 #xa0 #x8e)  ;; U+180E Mongolian Vowel Separator
                   (list #xe2 #x81 #xa0)  ;; U+2060 Word Joiner
                   (list #xef #xbb #xbe)  ;; U+FEFE reserved
