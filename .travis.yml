@@ -1,3 +1,7 @@
+stages:
+ - compile
+ - test
+ 
 language: c
 
 os:
@@ -8,4 +12,9 @@ compiler:
   - clang
   - gcc
 
-script: make
+jobs:
+   include:
+      - stage: compile
+        script: make
+      - stage: test
+        script: make test
