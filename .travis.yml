@@ -1,7 +1,3 @@
-stages:
- - compile
- - test
- 
 language: c
 
 os:
