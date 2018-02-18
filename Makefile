@@ -53,6 +53,9 @@ clean:
 
 test: .seal-of-quality
 
+fasltest: radamsa.fasl
+	sh tests/run owl-lisp/bin/vm radamsa.fasl
+
 .seal-of-quality: bin/radamsa
 	-mkdir -p tmp
 	sh tests/run bin/radamsa
