@@ -223,7 +223,8 @@ Radamsa was written by Aki Helin, initially at OUSPG.")
                   (else (loop (cdr cs) (cons (car cs) out)))))))
 
       (define K (λ (a b) a))
-      
+     
+      ;; todo: separate generation steps properly
       (define (run-radamsa dict paths)
          (lets/cc ret
             ((fail (λ (why) (print why) (ret 1)))
@@ -262,34 +263,29 @@ Radamsa was written by Aki Helin, initially at OUSPG.")
                 ((= left 0)
                    (record-meta 'close)
                    0)
-                ((eq? offset 1)
-                  (lets/cc ret
+                (else
+                  (lets
                      ((rs ll meta (gen rs))
                       (meta (put meta 'nth p))
                       (out-ll (pat rs ll muta meta))
                       (out-lst cs csum (checksummer cs out-ll)))
                      (if csum 
-                        (lets
-                           ((out fd meta (out meta))
-                            (rs muta generation-meta n-written 
-                              (output out-lst fd))
-                            (meta 
-                               (-> (ff-union meta generation-meta K)
-                                  (put 'length n-written)
-                                  (put 'checksum csum))))
-                           (record-meta meta)
-                           (sleeper)
-                           (loop rs muta pat out 1 (+ p 1) cs (- left 1)))
-                        (lets ((rs muta meta (dummy-output out-lst)))
-                           ;; skip output with checksum match
-                           (loop rs muta pat out 1 p cs left)))))
-                (else
-                  ;; fixme, checksums not in use while fast-forwarding. 
-                  (lets 
-                    ((rs ll meta (gen rs))
-                     (meta (put meta 'nth p))
-                     (rs muta meta (dummy-output (pat rs ll muta meta))))
-                    (loop rs muta pat out (- offset 1) (+ p 1) cs left)))))))
+                        (if (eq? offset 1)
+                           (lets
+                              ((out fd meta (out meta))
+                               (rs muta generation-meta n-written 
+                                 (output out-lst fd))
+                               (meta 
+                                  (-> (ff-union meta generation-meta K)
+                                     (put 'length n-written)
+                                     (put 'checksum csum))))
+                              (record-meta meta)
+                              (sleeper)
+                              (loop rs muta pat out 1 (+ p 1) cs (- left 1)))
+                           (lets ((rs muta meta (dummy-output out-lst)))
+                              (loop rs muta pat out (- offset 1) (+ p 1) cs left)))
+                        ;; checksum match - drop duplicate
+                        (loop rs muta pat out offset p cs left))))))))
   
       ;; dict args → rval
       (define (start-radamsa dict paths)
