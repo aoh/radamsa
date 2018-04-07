@@ -191,6 +191,7 @@ A non-exhaustive list of related free tools:
  * Bunny the Fuzzer (http://code.google.com/p/bunny-the-fuzzer/)
  * Peach (http://peachfuzzer.com/)
  * Sulley (http://code.google.com/p/sulley/)
+ * Munity (https://github.com/Cisco-Talos/mutiny-fuzzer)
 
 Tools which are intended to improve security are usually complementary and should be used in parallel to improve the results. Radamsa aims to be an easy-to-set-up general purpose shotgun test to expose the easiest (and often severe due to being reachable from via input streams) cracks which might be exploitable by getting the program to process malicious data. It has also turned out to be useful for catching regressions when combined with continuous automatic testing.
 
