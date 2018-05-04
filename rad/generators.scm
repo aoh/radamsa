@@ -40,7 +40,7 @@
             (let loop ((rs rs) (last #false) (wanted first) (len 0)) ;; 0 = block ready (if any)
                (let ((block (get-block port wanted)))
                   (cond
-                     ((eof? block) ;; end of stream
+                     ((eof-object? block) ;; end of stream
                         (if (not (eq? port stdin)) (fclose port))
                         (if last
                            (cons last (finish rs (+ len (sizeb last))))
