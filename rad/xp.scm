@@ -35,7 +35,7 @@
             null listish))
 
       (define xp-whitespace
-         (any
+         (one-of
             (get-imm #\space)
             (get-imm #\newline)))
 
@@ -43,7 +43,7 @@
          (get-greedy* xp-whitespace))
      
       (define xp-string-delim
-         (any
+         (one-of
             (get-imm #\")
             (get-imm #\')))
 
@@ -102,7 +102,7 @@
              (attrs (get-greedy* xp-attr))
              (skip xp-optwhite)
              (tag-type 
-               (any
+               (one-of
                   (let-parses ((skip (get-imm #\>))) 'open)
                   (let-parses ((skip (get-imm #\/)) (skip (get-imm #\>))) 'open-single))))
             (tuple tag-type tag attrs)))
@@ -149,7 +149,7 @@
 
       (define xp-parser 
          (get-greedy* 
-            (any
+            (one-of
                xp-tag-open/close
                (let-parses
                   ((this get-byte)

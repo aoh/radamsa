@@ -4,8 +4,8 @@ BINDIR=/bin
 CFLAGS?=-Wall -O2
 LDFLAGS?=
 OFLAGS=-O2
-OWL=ol-0.1.13
-OWLURL=https://github.com/aoh/owl-lisp/files/449350
+OWLVER=0.1.15
+OWLURL=https://github.com/aoh/owl-lisp/releases/download/v$(OWLVER)
 USR_BIN_OL=/usr/bin/ol
 
 everything: bin/radamsa
@@ -27,18 +27,13 @@ radamsa.c: rad/*.scm
 radamsa.fasl: rad/*.scm bin/ol
 	bin/ol -o radamsa.fasl rad/main.scm
 
-$(OWL).c:
-	test -f $(OWL).c.gz || wget $(OWLURL)/$(OWL).c.gz
-	gzip -d < $(OWL).c.gz > $(OWL).c
+ol-$(OWLVER).c:
+	test -f ol-$(OWLVER).c.gz || wget $(OWLURL)/ol-$(OWLVER).c.gz
+	gzip -d < ol-$(OWLVER).c.gz > ol-$(OWLVER).c
 	
-bin/ol: $(OWL).c
+bin/ol: ol-$(OWLVER).c
 	mkdir -p bin
-	#cc -O2 -o bin/ol $(OWL).c
-	# temporarily use develop branch of owl until next release
-	test -d owl-lisp || git clone https://github.com/aoh/owl-lisp.git
-	cd owl-lisp && git checkout develop
-	cd owl-lisp && make bin/ol
-	cp owl-lisp/bin/ol bin/ol
+	cc -O2 -o bin/ol ol-$(OWLVER).c
 
 install: bin/radamsa
 	-mkdir -p $(DESTDIR)$(PREFIX)/bin

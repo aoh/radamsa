@@ -41,12 +41,12 @@
                (let ((block (get-block port wanted)))
                   (cond
                      ((eof-object? block) ;; end of stream
-                        (if (not (eq? port stdin)) (fclose port))
+                        (if (not (eq? port stdin)) (close-port port))
                         (if last
                            (cons last (finish rs (+ len (sizeb last))))
                            (finish rs len)))
                      ((not block) ;; read error, could be treated as error
-                        (if (not (eq? port stdin)) (fclose port))
+                        (if (not (eq? port stdin)) (close-port port))
                         (if last (list last) null))
                      ((eq? (sizeb block) wanted)
                         ;; a block of required (deterministic) size is ready
