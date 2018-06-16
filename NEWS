@@ -1,6 +1,0 @@
-Changes in 0.5
- - %s in output path is the suffix of the main sample file used, if applicable, based on commit by Ditmar Wendt
- - added --seek to seek a specific testcase
- - added more unicode mutations by Chris Weber
- - added optional delay between outputs
- - started a NEWS log
