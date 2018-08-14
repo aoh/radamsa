@@ -7,7 +7,7 @@ Radamsa is a test case generator for robustness testing, a.k.a. a fuzzer. It is 
 ```
  $ # please please please fuzz your programs. here is one way to get data for it:
  $ sudo apt-get install gcc make git wget
- $ git clone https://github.com/aoh/radamsa.git && cd radamsa && make && sudo make install
+ $ git clone https://gitlab.com/akihe/radamsa.git && cd radamsa && make && sudo make install
  $ echo "HAL 9000" | radamsa
 ```
 
@@ -39,7 +39,7 @@ Software requirements for building from sources:
 
 ## Building Radamsa
 ```
- $ git clone https://github.com/aoh/radamsa.git
+ $ git clone https://gitlab.com/akihe/radamsa.git
  $ cd radamsa
  $ make
  $ sudo make install # optional, you can also just grab bin/radamsa
@@ -330,7 +330,7 @@ Q: Radamsa takes several GB of memory to compile!1
 A: This is most likely due to an issue with your C compiler. Use prebuilt images or try the quick build instructions in this page.
 
 Q: Radamsa does not compile using the instructions in this page!  
-A: Please file an issue at https://github.com/aoh/radamsa/issues if you don't see a similar one already filed, send email (aohelin@gmail.com) or IRC (#radamsa on freenode).
+A: Please file an issue at https://gitlab.com/akihe/radamsa/issues if you don't see a similar one already filed, send email (aohelin@gmail.com) or IRC (#radamsa on freenode).
 
 Q: I used fuzzer X and found much more bugs from program Y than Radamsa did.  
 A: Cool. Let me know about it (aohelin@gmail.com) and I'll try to hack something X-ish to radamsa if it's general purpose enough. It'd also be useful to get some samples which you used to check how well radamsa does, because it might be overfitting some heuristic.
